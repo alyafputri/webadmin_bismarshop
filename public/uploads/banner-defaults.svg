@@ -1,0 +1,5 @@
+<svg width="300" height="150" xmlns="http://www.w3.org/2000/svg">
+  <rect width="300" height="150" fill="#f8f9fa" stroke="#dee2e6" stroke-width="2"/>
+  <text x="150" y="70" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#6c757d">Default Banner</text>
+  <text x="150" y="90" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#6c757d">300 x 150</text>
+</svg>

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Promosi & Diskon - BismarShop Admin</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .sidebar {
+            min-height: 100vh;
+            background: #dc3545;
+            color: white;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 250px;
+            z-index: 1000;
+            transition: all 0.3s;
+        }
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            border-radius: 8px;
+            margin: 2px 8px;
+            transition: all 0.3s;
+        }
+        .sidebar .nav-link:hover, .sidebar .nav-link.active {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+            transform: translateX(5px);
+        }
+        .main-content {
+            margin-left: 250px;
+            padding: 20px;
+            transition: all 0.3s;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        }
+        .card-header {
+            background: #dc3545;
+            color: white;
+            border-radius: 15px 15px 0 0 !important;
+            border: none;
+        }
+        .btn-primary {
+            background: #dc3545;
+            border: none;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+        .btn-primary:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(220, 53, 69, 0.4);
+        }
+        .nav-tabs .nav-link {
+            border: none;
+            border-radius: 10px 10px 0 0;
+            margin-right: 5px;
+            background-color: #f8f9fa;
+            color: #6c757d;
+            transition: all 0.3s;
+        }
+        .nav-tabs .nav-link.active {
+            background: #dc3545;
+            color: white;
+        }
+        .table {
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .table thead th {
+            background: #dc3545;
+            color: white;
+            border: none;
+            font-weight: 600;
+        }
+        .badge {
+            border-radius: 20px;
+            padding: 8px 12px;
+            font-weight: 500;
+        }
+        .stats-card {
+            background: #dc3545;
+            color: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .stats-card .stats-number {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        .modal-content {
+            border-radius: 15px;
+            border: none;
+        }
+        .modal-header {
+            background: #dc3545;
+            color: white;
+            border-radius: 15px 15px 0 0;
+            border: none;
+        }
+        .form-control, .form-select {
+            border-radius: 8px;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: #dc3545;
+            box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+        }
+        .promotion-item {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-left: 4px solid #dc3545;
+            transition: all 0.3s;
+        }
+        .promotion-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        .countdown {
+            background: #ff6b6b;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        .usage-progress {
+            height: 8px;
+            border-radius: 4px;
+            background-color: #e9ecef;
+            overflow: hidden;
+        }
+        .usage-progress-bar {
+            height: 100%;
+            background: #dc3545;
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <nav class="sidebar">
+        <div class="p-3">
+            <h4 class="text-center mb-4">
+                <i class="fas fa-store me-2"></i>BismarShop
+            </h4>
+            <ul class="nav flex-column">
+                <li class="nav-item">
+                    <a class="nav-link" href="index.html">
+                        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="products.html">
+                        <i class="fas fa-box me-2"></i>Produk
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="orders.html">
+                        <i class="fas fa-shopping-cart me-2"></i>Pesanan
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="customers.html">
+                        <i class="fas fa-users me-2"></i>Pelanggan
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link active" href="index.html#promotions" onclick="window.location.href='index.html'; setTimeout(() => showSection('promotions'), 100);">
+                        <i class="fas fa-tags me-2"></i>Promosi & Diskon
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="settings.html">
+                        <i class="fas fa-cog me-2"></i>Pengaturan
+                    </a>
+                </li>
+                <li class="nav-item mt-3">
+                    <a class="nav-link" href="#" onclick="logout()">
+                        <i class="fas fa-sign-out-alt me-2"></i>Logout
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="container-fluid">
+            <!-- Header -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <h2><i class="fas fa-tags me-2"></i>Promosi & Diskon</h2>
+                    <p class="text-muted">Kelola voucher, diskon produk, flash sale, dan gratis ongkir</p>
+                </div>
+            </div>
+
+            <!-- Statistics Cards -->
+            <div class="row mb-4" id="statsCards">
+                <!-- Stats will be loaded here -->
+            </div>
+
+            <!-- Tabs Navigation -->
+            <ul class="nav nav-tabs mb-4" id="promotionTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="vouchers-tab" data-bs-toggle="tab" data-bs-target="#vouchers" type="button" role="tab">
+                        <i class="fas fa-ticket-alt me-2"></i>Voucher Belanja
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="product-discounts-tab" data-bs-toggle="tab" data-bs-target="#product-discounts" type="button" role="tab">
+                        <i class="fas fa-percent me-2"></i>Diskon Produk
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="flash-sales-tab" data-bs-toggle="tab" data-bs-target="#flash-sales" type="button" role="tab">
+                        <i class="fas fa-bolt me-2"></i>Flash Sale
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="free-shipping-tab" data-bs-toggle="tab" data-bs-target="#free-shipping" type="button" role="tab">
+                        <i class="fas fa-shipping-fast me-2"></i>Gratis Ongkir
+                    </button>
+                </li>
+            </ul>
+
+            <!-- Tab Content -->
+            <div class="tab-content" id="promotionTabContent">
+                <!-- Vouchers Tab -->
+                <div class="tab-pane fade show active" id="vouchers" role="tabpanel">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-ticket-alt me-2"></i>Voucher Belanja</h5>
+                            <button class="btn btn-light btn-sm" onclick="openVoucherModal()">
+                                <i class="fas fa-plus me-2"></i>Tambah Voucher
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="vouchersList">
+                                <!-- Vouchers will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Product Discounts Tab -->
+                <div class="tab-pane fade" id="product-discounts" role="tabpanel">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-percent me-2"></i>Diskon Produk</h5>
+                            <button class="btn btn-light btn-sm" onclick="openProductDiscountModal()">
+                                <i class="fas fa-plus me-2"></i>Tambah Diskon
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="productDiscountsList">
+                                <!-- Product discounts will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Flash Sales Tab -->
+                <div class="tab-pane fade" id="flash-sales" role="tabpanel">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>Flash Sale</h5>
+                            <button class="btn btn-light btn-sm" onclick="openFlashSaleModal()">
+                                <i class="fas fa-plus me-2"></i>Tambah Flash Sale
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="flashSalesList">
+                                <!-- Flash sales will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Free Shipping Tab -->
+                <div class="tab-pane fade" id="free-shipping" role="tabpanel">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-shipping-fast me-2"></i>Gratis Ongkir</h5>
+                            <button class="btn btn-light btn-sm" onclick="openFreeShippingModal()">
+                                <i class="fas fa-plus me-2"></i>Tambah Promo
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="freeShippingList">
+                                <!-- Free shipping promotions will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals will be added in separate file -->
+    <div id="modalsContainer"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.all.min.js"></script>
+    <script src="promotions.js"></script>
+</body>
+</html>
