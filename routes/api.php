@@ -24,6 +24,13 @@ use App\Http\Controllers\Admin\FeaturedProductController as AdminFeaturedProduct
 
 // Prefix automatically /api from Laravel
 
+// Endpoint admin (JSON) untuk daftar dan approval customer
+Route::prefix('admin')->group(function () {
+    Route::get('/customers', [AdminCustomerController::class, 'index']);
+    Route::get('/customers/pending-count', [AdminCustomerController::class, 'pendingCount']);
+    Route::patch('/customers/{id}/status', [AdminCustomerController::class, 'updateStatus']);
+});
+
 // Public endpoint untuk membuat/menyimpan customer dari mobile app
 Route::post('/customers', [AdminCustomerController::class, 'storeFromMobile']);
 
