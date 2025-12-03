@@ -80,12 +80,13 @@ class WidgetController extends BaseController
             $is_active = (int)($req->input('is_active', 1)) ? 1 : 0;
             $category_slug = $req->input('category_slug');
 
-            $dir = public_path('widget');
+            // Simpan ke public/uploads agar konsisten dengan gambar lain (produk, banner)
+            $dir = public_path('uploads');
             if (!is_dir($dir)) @mkdir($dir, 0777, true);
             $filename = 'widget-'.time().'-'.mt_rand(1000,9999).'.'.$file->getClientOriginalExtension();
             $file->move($dir, $filename);
-            $filePath = 'public'.DIRECTORY_SEPARATOR.'widget'.DIRECTORY_SEPARATOR.$filename; // informational
-            $url = '/widget/'.$filename;
+            $filePath = 'public'.DIRECTORY_SEPARATOR.'uploads'.DIRECTORY_SEPARATOR.$filename; // path informasional
+            $url = '/uploads/'.$filename;
 
             $id = DB::table('widgets')->insertGetId([
                 'title'=>$title,

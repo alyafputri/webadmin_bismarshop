@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\UploadController as AdminUploadController;
 use App\Http\Controllers\Admin\AdminUserController as AdminUserController;
 use App\Http\Controllers\Admin\AnalyticsController as AdminAnalyticsController;
 use App\Http\Controllers\Admin\ProductDiscountController as AdminProductDiscountController;
+use App\Http\Controllers\Admin\ProductVoucherController as AdminProductVoucherController;
 use App\Http\Controllers\Admin\FlashSaleController as AdminFlashSaleController;
 use App\Http\Controllers\Admin\FreeShippingController as AdminFreeShippingController;
 use App\Http\Controllers\Admin\CategoryController as AdminCategoryController;
@@ -92,12 +93,12 @@ Route::middleware('auth.token')->group(function () {
     Route::put('/product-discounts/{id}', [AdminProductDiscountController::class, 'update']);
     Route::delete('/product-discounts/{id}', [AdminProductDiscountController::class, 'destroy']);
 
-    // Backward-compatible aliases: product-vouchers -> product-discounts
-    Route::get('/product-vouchers', [AdminProductDiscountController::class, 'index']);
-    Route::get('/product-vouchers/{id}', [AdminProductDiscountController::class, 'show']);
-    Route::post('/product-vouchers', [AdminProductDiscountController::class, 'store']);
-    Route::put('/product-vouchers/{id}', [AdminProductDiscountController::class, 'update']);
-    Route::delete('/product-vouchers/{id}', [AdminProductDiscountController::class, 'destroy']);
+    // Product Vouchers CRUD (uses product_vouchers table)
+    Route::get('/product-vouchers', [AdminProductVoucherController::class, 'index']);
+    Route::get('/product-vouchers/{id}', [AdminProductVoucherController::class, 'show']);
+    Route::post('/product-vouchers', [AdminProductVoucherController::class, 'store']);
+    Route::put('/product-vouchers/{id}', [AdminProductVoucherController::class, 'update']);
+    Route::delete('/product-vouchers/{id}', [AdminProductVoucherController::class, 'destroy']);
 
     // Flash Sales CRUD
     Route::get('/flash-sales', [AdminFlashSaleController::class, 'index']);

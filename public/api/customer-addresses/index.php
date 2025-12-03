@@ -28,7 +28,7 @@ try {
   exit;
 }
 
-// Ensure table exists
+// Ensure table exists0
 $pdo->exec("CREATE TABLE IF NOT EXISTS addresses (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
