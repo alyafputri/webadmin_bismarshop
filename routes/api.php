@@ -24,6 +24,8 @@ use App\Http\Controllers\Admin\FeaturedProductController as AdminFeaturedProduct
 
 // Prefix automatically /api from Laravel
 
+
+
 // Endpoint admin (JSON) untuk daftar dan approval customer
 Route::prefix('admin')->group(function () {
     Route::get('/customers', [AdminCustomerController::class, 'index']);
@@ -161,6 +163,7 @@ Route::prefix('public')->group(function () {
     Route::get('/reviews', [PublicApiController::class, 'listReviews']);
     Route::get('/categories', [PublicApiController::class, 'categories']);
     Route::get('/customer-status', [PublicApiController::class, 'customerStatus']);
+    Route::get('/customers', [AdminCustomerController::class, 'index']);
 });
 
 // Fallback JSON for any unmatched /api/* route to avoid HTML 404 pages in frontend
