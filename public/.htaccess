@@ -1,12 +1,15 @@
 <IfModule mod_headers.c>
+    # Izinkan semua origin mengakses gambar di /widget dan /uploads
     <LocationMatch "^/widget/.*\.(jpg|jpeg|png|gif|webp|svg)$">
         Header set Access-Control-Allow-Origin "*"
-    </LocationMatchMatch>
+    </LocationMatch>
+
     <LocationMatch "^/uploads/.*\.(jpg|jpeg|png|gif|webp|svg)$">
         Header set Access-Control-Allow-Origin "*"
     </LocationMatch>
 </IfModule>
 
+<IfModule mod_rewrite.c>
     RewriteEngine On
 
     # Handle Authorization Header
