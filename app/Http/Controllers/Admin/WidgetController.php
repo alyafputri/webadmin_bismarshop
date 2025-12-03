@@ -81,12 +81,12 @@ class WidgetController extends BaseController
             $category_slug = $req->input('category_slug');
 
             // Simpan ke public/uploads agar konsisten dengan gambar lain (produk, banner)
-            $dir = public_path('uploads');
+            $dir = public_path('../widget');
             if (!is_dir($dir)) @mkdir($dir, 0777, true);
             $filename = 'widget-'.time().'-'.mt_rand(1000,9999).'.'.$file->getClientOriginalExtension();
             $file->move($dir, $filename);
             $filePath = 'public'.DIRECTORY_SEPARATOR.'uploads'.DIRECTORY_SEPARATOR.$filename; // path informasional
-            $url = '/uploads/'.$filename;
+            $url = '/widget'.$filename;
 
             $id = DB::table('widgets')->insertGetId([
                 'title'=>$title,
@@ -159,11 +159,12 @@ class WidgetController extends BaseController
             if (!$file) return response()->json(['success'=>false,'message'=>'No file uploaded'], 400);
             $allowed = ['image/jpeg','image/jpg','image/png','image/webp','image/gif'];
             if (!in_array($file->getMimeType(), $allowed)) return response()->json(['success'=>false,'message'=>'Only image files are allowed'], 400);
-            $dir = public_path('uploads');
+
+            $dir = public_path('../widget');
             if (!is_dir($dir)) @mkdir($dir, 0777, true);
             $filename = 'banner-'.time().'-'.mt_rand(1000,9999).'.'.$file->getClientOriginalExtension();
             $file->move($dir, $filename);
-            $url = '/uploads/'.$filename;
+            $url = '/widget'.$filename;
             // Optionally store as a widget row too for consistency
             try { DB::table('widgets')->insert(['title'=>'Banner','type'=>'banner','file_path'=>'public/uploads/'.$filename,'url'=>$url,'is_active'=>1,'created_at'=>now()]); } catch (\Throwable $e) {}
             return response()->json(['success'=>true,'url'=>$url]);
