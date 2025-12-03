@@ -20,7 +20,7 @@ class UploadController extends BaseController
             if (!is_array($files)) $files = [$files];
 
             $uploaded = [];
-            $dest = public_path('uploads');
+            $dest = public_path('../uploads');
             if (!is_dir($dest)) @mkdir($dest, 0775, true);
 
             // Ensure product_images table exists before inserting placeholders
