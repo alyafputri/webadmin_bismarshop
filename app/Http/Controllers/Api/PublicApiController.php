@@ -524,4 +524,62 @@ class PublicApiController extends BaseController
             return response()->json(['success'=>true,'data'=>[]]);
         }
     }
+        public function customerStatus(Request $req)
+    {
+        $email = $req->query('email');
+
+        if (!$email) {
+            return response()->json([
+                'success' => false,
+                'found'   => false,
+                'status'  => null,
+                'message' => 'Email is required',
+            ], 400);
+        }
+
+        try {
+            // Cek di tabel customers
+            $cust = DB::selectOne(
+                'SELECT status FROM customers WHERE email = ? LIMIT 1',
+                [$email]
+            );
+
+            if ($cust) {
+                return response()->json([
+                    'success' => true,
+                    'found'   => true,
+                    'status'  => $cust->status, // 'active' / 'inactive' / 'banned'
+                ]);
+            }
+
+            // Fallback: cek di tabel users (opsional)
+            $user = DB::selectOne(
+                'SELECT is_active FROM users WHERE email = ? LIMIT 1',
+                [$email]
+            );
+
+            if ($user) {
+                $status = ((int)($user->is_active ?? 0) === 1) ? 'active' : 'inactive';
+                return response()->json([
+                    'success' => true,
+                    'found'   => true,
+                    'status'  => $status,
+                ]);
+            }
+
+            // Tidak ditemukan di customers maupun users
+            return response()->json([
+                'success' => true,
+                'found'   => false,
+                'status'  => null,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'found'   => false,
+                'status'  => null,
+                'message' => $e->getMessage(), // boleh dihapus nanti kalau sudah stabil
+            ], 500);
+        }
+    }
 }
