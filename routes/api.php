@@ -24,6 +24,9 @@ use App\Http\Controllers\Admin\FeaturedProductController as AdminFeaturedProduct
 
 // Prefix automatically /api from Laravel
 
+// Public endpoint untuk membuat/menyimpan customer dari mobile app
+Route::post('/customers', [AdminCustomerController::class, 'storeFromMobile']);
+
 // Auth routes
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
@@ -150,6 +153,7 @@ Route::prefix('public')->group(function () {
     Route::post('/reviews', [PublicApiController::class, 'upsertReview']);
     Route::get('/reviews', [PublicApiController::class, 'listReviews']);
     Route::get('/categories', [PublicApiController::class, 'categories']);
+    Route::get('/customer-status', [PublicApiController::class, 'customerStatus']);
 });
 
 // Fallback JSON for any unmatched /api/* route to avoid HTML 404 pages in frontend
