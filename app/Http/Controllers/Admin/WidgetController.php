@@ -85,8 +85,8 @@ class WidgetController extends BaseController
             if (!is_dir($dir)) @mkdir($dir, 0777, true);
             $filename = 'widget-'.time().'-'.mt_rand(1000,9999).'.'.$file->getClientOriginalExtension();
             $file->move($dir, $filename);
-            $filePath = 'public'.DIRECTORY_SEPARATOR.'uploads'.DIRECTORY_SEPARATOR.$filename; // path informasional
-            $url = '/widget'.$filename;
+            $filePath = 'uploads'.DIRECTORY_SEPARATOR.$filename; // path informasional
+            $url = '/widget/'.$filename;
 
             $id = DB::table('widgets')->insertGetId([
                 'title'=>$title,
