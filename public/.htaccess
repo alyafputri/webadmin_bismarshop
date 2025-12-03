@@ -1,7 +1,11 @@
-<IfModule mod_rewrite.c>
-    <IfModule mod_negotiation.c>
-        Options -MultiViews -Indexes
-    </IfModule>
+<IfModule mod_headers.c>
+    <LocationMatch "^/widget/.*\.(jpg|jpeg|png|gif|webp|svg)$">
+        Header set Access-Control-Allow-Origin "*"
+    </LocationMatchMatch>
+    <LocationMatch "^/uploads/.*\.(jpg|jpeg|png|gif|webp|svg)$">
+        Header set Access-Control-Allow-Origin "*"
+    </LocationMatch>
+</IfModule>
 
     RewriteEngine On
 
