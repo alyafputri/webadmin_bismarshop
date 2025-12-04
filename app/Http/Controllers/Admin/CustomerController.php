@@ -55,7 +55,7 @@ class CustomerController extends BaseController
                     $synthWhere[] = 'COALESCE(u.is_active,0) = 1';
                 } elseif ($status === 'inactive') {
                     $synthWhere[] = 'COALESCE(u.is_active,0) = 0';
-                } // status 'banned' tidak berlaku untuk users sintetis
+                }
             }
 
             if ($q) {
@@ -68,7 +68,7 @@ class CustomerController extends BaseController
 
             $synthetic = DB::select("
                 SELECT
-                    u.id AS id, -- gunakan id user sebagai id baris untuk approve
+                    u.id AS id,
                     u.name AS name,
                     u.email AS email,
                     NULL AS phone,
@@ -84,7 +84,7 @@ class CustomerController extends BaseController
                 LIMIT 200
             ", $synthParams);
 
-            // 3) Gabungkan: customers terlebih dulu, lalu user sintetis
+            // 3) Gabungkan
             $rows = array_merge($customers, $synthetic);
 
             return response()->json([
@@ -102,11 +102,9 @@ class CustomerController extends BaseController
     public function pendingCount()
     {
         try {
-            // inactive di customers
             $c1  = DB::selectOne("SELECT COUNT(*) AS cnt FROM customers WHERE status = 'inactive'");
             $cnt1 = (int) ($c1->cnt ?? 0);
 
-            // user tanpa customers, role_id null/0, is_active = 0
             $c2 = DB::selectOne("
                 SELECT COUNT(*) AS cnt
                 FROM users u
@@ -144,14 +142,13 @@ class CustomerController extends BaseController
         try {
             $customerId = (int) $id;
 
-            // 1) Coba update di tabel customers berdasarkan id
+            // 1) Coba update di tabel customers
             $affected = DB::update(
                 'UPDATE customers SET status = ? WHERE id = ?',
                 [$status, $customerId]
             );
 
             if ($affected > 0) {
-                // Sinkronisasikan users.is_active berdasarkan email customer
                 try {
                     $cust = DB::selectOne(
                         'SELECT email FROM customers WHERE id = ? LIMIT 1',
@@ -163,9 +160,7 @@ class CustomerController extends BaseController
                             [$status === 'active' ? 1 : 0, $cust->email]
                         );
                     }
-                } catch (\Throwable $e) {
-                    // diamkan error sinkronisasi kecil
-                }
+                } catch (\Throwable $e) {}
 
                 return response()->json([
                     'success' => true,
@@ -177,7 +172,7 @@ class CustomerController extends BaseController
                 ]);
             }
 
-            // 2) Jika tidak ada di customers, perlakukan id sebagai user.id
+            // 2) Jika tidak ada di customers, cari di users
             $userId = (int) $id;
 
             $user = DB::selectOne(
@@ -192,14 +187,12 @@ class CustomerController extends BaseController
                 ], 404);
             }
 
-            // Upsert ke tabel customers
             DB::insert(
                 'INSERT INTO customers (name, email, phone, address, status, created_at, updated_at)
                  VALUES (?, ?, NULL, NULL, ?, NOW(), NOW())',
                 [$user->name, $user->email, $status]
             );
 
-            // Update status aktif di users
             DB::update(
                 'UPDATE users SET is_active = ? WHERE id = ?',
                 [$status === 'active' ? 1 : 0, $userId]
@@ -222,75 +215,82 @@ class CustomerController extends BaseController
         }
     }
 
-    /**
-     * Opsional: endpoint yang dipakai APK untuk membuat/menyimpan customer.
-     * Jika Anda sudah punya method storeFromMobile sebelumnya, biarkan yang lama
-     * atau gabungkan dengan kebutuhan Anda.
-     */
-    public function storeFromMobile(Request $req)
+    // ============================================================
+    // ===============  REGISTER DARI APK FLUTTER  =================
+    // ============================================================
+    public function registerFromMobile(Request $req)
     {
         $data = $req->validate([
-            'name'    => ['required', 'string', 'max:255'],
-            'email'   => ['required', 'email', 'max:255'],
-            'phone'   => ['nullable', 'string', 'max:50'],
-            'address' => ['nullable', 'string', 'max:255'],
-            'source'  => ['nullable', 'string', 'max:50'], // contoh: 'mobile'
-            'status'  => ['nullable', 'string', 'max:50'], // default 'inactive'
+            'name'     => ['required', 'string', 'max:255'],
+            'email'    => ['required', 'email', 'max:255'],
+            'password' => ['required', 'string', 'min:6'],
+            'phone'    => ['nullable', 'string', 'max:50'],
+            'address'  => ['nullable', 'string', 'max:255'],
         ]);
 
-        $status = $data['status'] ?? 'inactive';
-
         try {
-            $existing = DB::selectOne(
-                'SELECT * FROM customers WHERE email = ? LIMIT 1',
+            // Cek jika user sudah ada
+            $existsUser = DB::selectOne(
+                "SELECT id FROM users WHERE email = ? LIMIT 1",
                 [$data['email']]
             );
 
-            if ($existing) {
-                DB::update(
-                    'UPDATE customers SET name = ?, phone = ?, address = ?, status = ?, updated_at = NOW() WHERE id = ?',
-                    [
-                        $data['name'],
-                        $data['phone']   ?? $existing->phone,
-                        $data['address'] ?? $existing->address,
-                        $status,
-                        (int) $existing->id,
-                    ]
-                );
-                $id = (int) $existing->id;
-            } else {
-                DB::insert(
-                    'INSERT INTO customers (name,email,phone,address,status,created_at,updated_at)
-                     VALUES (?,?,?,?,?,NOW(),NOW())',
-                    [
-                        $data['name'],
-                        $data['email'],
-                        $data['phone']   ?? null,
-                        $data['address'] ?? null,
-                        $status,
-                    ]
-                );
-                $row = DB::selectOne(
-                    'SELECT id FROM customers WHERE email = ? ORDER BY id DESC LIMIT 1',
-                    [$data['email']]
-                );
-                $id = (int) ($row->id ?? 0);
+            if ($existsUser) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Email sudah terdaftar.',
+                ], 409);
             }
+
+            // Buat user login
+            DB::insert("
+                INSERT INTO users (name, email, password, role_id, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, 0, 1, NOW(), NOW())
+            ", [
+                $data['name'],
+                $data['email'],
+                password_hash($data['password'], PASSWORD_BCRYPT),
+            ]);
+
+            // Ambil ID user
+            $user = DB::selectOne(
+                "SELECT id FROM users WHERE email = ? ORDER BY id DESC LIMIT 1",
+                [$data['email']]
+            );
+            $userId = (int) ($user->id ?? 0);
+
+            // Buat customer
+            DB::insert("
+                INSERT INTO customers (name, email, phone, address, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'active', NOW(), NOW())
+            ", [
+                $data['name'],
+                $data['email'],
+                $data['phone'] ?? null,
+                $data['address'] ?? null,
+            ]);
+
+            // Ambil customer ID
+            $cust = DB::selectOne(
+                "SELECT id FROM customers WHERE email = ? ORDER BY id DESC LIMIT 1",
+                [$data['email']]
+            );
 
             return response()->json([
                 'success' => true,
-                'data'    => [
-                    'id'     => $id,
-                    'name'   => $data['name'],
-                    'email'  => $data['email'],
-                    'phone'  => $data['phone'] ?? null,
-                    'status' => $status,
+                'message' => 'Registrasi berhasil',
+                'data' => [
+                    'user_id'     => $userId,
+                    'customer_id' => $cust->id,
+                    'name'        => $data['name'],
+                    'email'       => $data['email'],
                 ],
             ], 201);
+
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error creating customer',
+                'message' => 'Terjadi kesalahan server.',
                 'error'   => $e->getMessage(),
             ], 500);
         }
