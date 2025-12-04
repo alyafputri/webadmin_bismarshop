@@ -8,96 +8,42 @@ use Illuminate\Support\Facades\DB;
 
 class CustomerController extends BaseController
 {
-    public function index(Request $req)
-    {
-        $status = $req->query('status'); // 'active' | 'inactive' | 'banned' | null
-        $q      = $req->query('q');
+public function index(Request $req)
+{
+    $status = $req->query('status'); 
+    $q      = $req->query('q');
 
-        try {
-            // 1) Ambil data dari tabel customers
-            $where  = [];
-            $params = [];
+    try {
+        // Ambil semua data customers tanpa LIMIT
+        $query = DB::table('customers')->orderBy('id', 'DESC');
 
-            if ($status) {
-                $where[]  = 'c.status = ?';
-                $params[] = (string) $status;
-            }
-            if ($q) {
-                $where[]  = '(c.name LIKE ? OR c.email LIKE ?)';
-                $params[] = "%$q%";
-                $params[] = "%$q%";
-            }
-
-            $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
-
-            $customers = DB::select("
-                SELECT
-                    c.id,
-                    c.name,
-                    c.email,
-                    c.phone,
-                    c.address,
-                    c.status,
-                    c.created_at,
-                    c.updated_at
-                FROM customers c
-                $whereSql
-                ORDER BY c.id DESC
-                LIMIT 200
-            ", $params);
-
-            // 2) Tambahkan data sintetis dari users yang BELUM ada di customers
-            $synthWhere  = ['(u.role_id IS NULL OR u.role_id = 0)'];
-            $synthParams = [];
-
-            if ($status) {
-                if ($status === 'active') {
-                    $synthWhere[] = 'COALESCE(u.is_active,0) = 1';
-                } elseif ($status === 'inactive') {
-                    $synthWhere[] = 'COALESCE(u.is_active,0) = 0';
-                }
-            }
-
-            if ($q) {
-                $synthWhere[]  = '(u.name LIKE ? OR u.email LIKE ?)';
-                $synthParams[] = "%$q%";
-                $synthParams[] = "%$q%";
-            }
-
-            $synthWhereSql = $synthWhere ? ('AND ' . implode(' AND ', $synthWhere)) : '';
-
-            $synthetic = DB::select("
-                SELECT
-                    u.id AS id,
-                    u.name AS name,
-                    u.email AS email,
-                    NULL AS phone,
-                    NULL AS address,
-                    CASE WHEN COALESCE(u.is_active,0) = 1 THEN 'active' ELSE 'inactive' END AS status,
-                    COALESCE(u.created_at, NOW()) AS created_at,
-                    COALESCE(u.updated_at, NOW()) AS updated_at
-                FROM users u
-                LEFT JOIN customers c ON c.email = u.email
-                WHERE c.email IS NULL
-                  $synthWhereSql
-                ORDER BY u.id DESC
-                LIMIT 200
-            ", $synthParams);
-
-            // 3) Gabungkan
-            $rows = array_merge($customers, $synthetic);
-
-            return response()->json([
-                'success' => true,
-                'data'    => $rows ?: [],
-            ]);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'success' => true,
-                'data'    => [],
-            ]);
+        if ($status) {
+            $query->where('status', $status);
         }
+
+        if ($q) {
+            $query->where(function ($w) use ($q) {
+                $w->where('name', 'like', "%$q%")
+                  ->orWhere('email', 'like', "%$q%");
+            });
+        }
+
+        $customers = $query->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $customers,
+        ]);
+
+    } catch (\Throwable $e) {
+        return response()->json([
+            'success' => false,
+            'data' => [],
+            'error' => $e->getMessage(),
+        ]);
     }
+}
+
 
     public function pendingCount()
     {
