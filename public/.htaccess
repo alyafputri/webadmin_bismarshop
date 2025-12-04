@@ -2,13 +2,14 @@
 # CORS untuk file gambar
 # =========================
 <IfModule mod_headers.c>
-    # Izinkan semua origin mengakses file gambar (termasuk /widget dan /uploads)
-    <FilesMatch "\.(jpg|jpeg|png|gif|webp|svg)$">
-        Header set Access-Control-Allow-Origin "*"
-        # Jika perlu header lain:
-        # Header set Access-Control-Allow-Methods "GET, OPTIONS"
-        # Header set Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept"
-    </FilesMatch>
+    # Izinkan akses dari semua origin (dev/testing)
+    Header always set Access-Control-Allow-Origin "*"
+    Header always set Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+
+    # Tangani preflight OPTIONS
+    RewriteCond %{REQUEST_METHOD} OPTIONS
+    RewriteRule ^(.*)$ $1 [R=200,L]
 </IfModule>
 
 # =========================
