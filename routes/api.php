@@ -6,7 +6,7 @@ use App\Http\Controllers\Api\PublicApiController;
 use App\Http\Controllers\Admin\WidgetController as AdminWidgetController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
-use App\Http\Controllers\Admin\CustomerController ;
+use App\Http\Controllers\Admin\CustomerController as AdminCustomerController;
 use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Admin\PromotionsController as AdminPromotionsController;
 use App\Http\Controllers\Admin\ProductController as AdminProductController;
@@ -35,7 +35,7 @@ Route::prefix('admin')->group(function () {
 
 // Public endpoint untuk membuat/menyimpan customer dari mobile app
 Route::post('/customers', [AdminCustomerController::class, 'storeFromMobile']);
-Route::post('/mobile/register', [CustomerController::class, 'registerFromMobile']);
+
 // Auth routes
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
