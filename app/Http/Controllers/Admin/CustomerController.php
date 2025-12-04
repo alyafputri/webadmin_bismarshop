@@ -8,56 +8,97 @@ use Illuminate\Support\Facades\DB;
 
 class CustomerController extends BaseController
 {
-public function index(Request $req)
-{
-    $status = $req->query('status'); 
-    $q      = $req->query('q');
+    // ============================================================
+    // ===============  LIST CUSTOMER + PENDING USER ===============
+    // ============================================================
+    public function index(Request $req)
+    {
+        $status = $req->query('status'); 
+        $q      = $req->query('q');
 
-    try {
-        // Ambil semua data customers tanpa LIMIT
-        $query = DB::table('customers')->orderBy('id', 'DESC');
+        try {
+            // ============================
+            // 1. Data customer yang sudah approve
+            // ============================
+            $query = DB::table('customers')->orderBy('id', 'DESC');
 
-        if ($status) {
-            $query->where('status', $status);
+            if ($status) {
+                $query->where('status', $status);
+            }
+
+            if ($q) {
+                $query->where(function ($w) use ($q) {
+                    $w->where('name', 'like', "%$q%")
+                      ->orWhere('email', 'like', "%$q%");
+                });
+            }
+
+            $customers = $query->get();
+
+
+            // ============================
+            // 2. User pending (belum masuk customers)
+            // ============================
+            $pending = DB::table('users as u')
+                ->leftJoin('customers as c', 'c.email', '=', 'u.email')
+                ->whereNull('c.email') // FIX UTAMA
+                ->select(
+                    'u.id as id',
+                    'u.name',
+                    'u.email',
+                    DB::raw('NULL as phone'),
+                    DB::raw('NULL as address'),
+                    DB::raw("'pending' as status"),
+                    'u.created_at',
+                    'u.updated_at'
+                );
+
+            if ($q) {
+                $pending->where(function ($w) use ($q) {
+                    $w->where('u.name', 'like', "%$q%")
+                      ->orWhere('u.email', 'like', "%$q%");
+                });
+            }
+
+            $pendingUsers = $pending->get();
+
+
+            // ============================
+            // Gabungkan semuanya
+            // ============================
+            $rows = $customers->merge($pendingUsers)->sortByDesc('id')->values();
+
+            return response()->json([
+                'success' => true,
+                'data' => $rows,
+            ]);
+
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'data' => [],
+                'error' => $e->getMessage(),
+            ]);
         }
-
-        if ($q) {
-            $query->where(function ($w) use ($q) {
-                $w->where('name', 'like', "%$q%")
-                  ->orWhere('email', 'like', "%$q%");
-            });
-        }
-
-        $customers = $query->get();
-
-        return response()->json([
-            'success' => true,
-            'data' => $customers,
-        ]);
-
-    } catch (\Throwable $e) {
-        return response()->json([
-            'success' => false,
-            'data' => [],
-            'error' => $e->getMessage(),
-        ]);
     }
-}
 
 
+    // ============================================================
+    // ====================== PENDING COUNT ========================
+    // ============================================================
     public function pendingCount()
     {
         try {
-            $c1  = DB::selectOne("SELECT COUNT(*) AS cnt FROM customers WHERE status = 'inactive'");
+            // Customer inactive = belum approve
+            $c1 = DB::selectOne("SELECT COUNT(*) AS cnt FROM customers WHERE status = 'inactive'");
             $cnt1 = (int) ($c1->cnt ?? 0);
 
+            // User pending = belum masuk customers
             $c2 = DB::selectOne("
                 SELECT COUNT(*) AS cnt
                 FROM users u
                 LEFT JOIN customers c ON c.email = u.email
                 WHERE c.email IS NULL
-                  AND (u.role_id IS NULL OR u.role_id = 0)
-                  AND COALESCE(u.is_active,0) = 0
             ");
             $cnt2 = (int) ($c2->cnt ?? 0);
 
@@ -73,6 +114,11 @@ public function index(Request $req)
         }
     }
 
+
+
+    // ============================================================
+    // ==================== UPDATE STATUS ==========================
+    // ============================================================
     public function updateStatus(Request $req, $id)
     {
         $status = $req->input('status');
@@ -81,14 +127,14 @@ public function index(Request $req)
         if (!in_array($status, $valid, true)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid status. Must be one of: active, inactive, banned',
+                'message' => 'Invalid status.',
             ], 400);
         }
 
         try {
             $customerId = (int) $id;
 
-            // 1) Coba update di tabel customers
+            // 1. Update existing customer
             $affected = DB::update(
                 'UPDATE customers SET status = ? WHERE id = ?',
                 [$status, $customerId]
@@ -118,11 +164,11 @@ public function index(Request $req)
                 ]);
             }
 
-            // 2) Jika tidak ada di customers, cari di users
+            // 2. Jika belum customer → jadikan customer baru
             $userId = (int) $id;
 
             $user = DB::selectOne(
-                'SELECT id, name, email FROM users WHERE id = ? AND (role_id IS NULL OR role_id = 0) LIMIT 1',
+                'SELECT id, name, email FROM users WHERE id = ? LIMIT 1',
                 [$userId]
             );
 
@@ -152,6 +198,7 @@ public function index(Request $req)
                     'status' => $status,
                 ],
             ]);
+
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -160,6 +207,8 @@ public function index(Request $req)
             ], 500);
         }
     }
+
+
 
     // ============================================================
     // ===============  REGISTER DARI APK FLUTTER  =================
@@ -188,49 +237,19 @@ public function index(Request $req)
                 ], 409);
             }
 
-            // Buat user login
+            // Buat user login (HARUSNYA is_active = 0 agar pending)
             DB::insert("
                 INSERT INTO users (name, email, password, role_id, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, 0, 1, NOW(), NOW())
+                VALUES (?, ?, ?, 0, 0, NOW(), NOW())
             ", [
                 $data['name'],
                 $data['email'],
                 password_hash($data['password'], PASSWORD_BCRYPT),
             ]);
 
-            // Ambil ID user
-            $user = DB::selectOne(
-                "SELECT id FROM users WHERE email = ? ORDER BY id DESC LIMIT 1",
-                [$data['email']]
-            );
-            $userId = (int) ($user->id ?? 0);
-
-            // Buat customer
-            DB::insert("
-                INSERT INTO customers (name, email, phone, address, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 'active', NOW(), NOW())
-            ", [
-                $data['name'],
-                $data['email'],
-                $data['phone'] ?? null,
-                $data['address'] ?? null,
-            ]);
-
-            // Ambil customer ID
-            $cust = DB::selectOne(
-                "SELECT id FROM customers WHERE email = ? ORDER BY id DESC LIMIT 1",
-                [$data['email']]
-            );
-
             return response()->json([
                 'success' => true,
-                'message' => 'Registrasi berhasil',
-                'data' => [
-                    'user_id'     => $userId,
-                    'customer_id' => $cust->id,
-                    'name'        => $data['name'],
-                    'email'       => $data['email'],
-                ],
+                'message' => 'Registrasi berhasil. Menunggu persetujuan admin.',
             ], 201);
 
         } catch (\Throwable $e) {
