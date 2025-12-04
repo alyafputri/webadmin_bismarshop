@@ -1,94 +1,172 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-
-// ==============================
-// ADMIN CONTROLLERS
-// ==============================
-use App\Http\Controllers\Admin\CustomerController as AdminCustomerController;
-use App\Http\Controllers\Admin\ProductController as AdminProductController;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\PublicApiController;
+use App\Http\Controllers\Admin\WidgetController as AdminWidgetController;
+use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
+use App\Http\Controllers\Admin\CustomerController ;
 use App\Http\Controllers\Admin\ReviewController as AdminReviewController;
+use App\Http\Controllers\Admin\PromotionsController as AdminPromotionsController;
+use App\Http\Controllers\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Admin\VoucherController as AdminVoucherController;
-
-// ==============================
-// AUTH CONTROLLERS
-// ==============================
-use App\Http\Controllers\Auth\AuthController;
-use App\Http\Controllers\Auth\RegisterController;
-use App\Http\Controllers\Auth\PasswordResetController;
-
-// ==============================
-// PUBLIC / MOBILE CONTROLLERS
-// ==============================
-use App\Http\Controllers\OrderItemController;
-use App\Http\Controllers\ProfitLossController;
+use App\Http\Controllers\Admin\UploadController as AdminUploadController;
+use App\Http\Controllers\Admin\AdminUserController as AdminUserController;
+use App\Http\Controllers\Admin\AnalyticsController as AdminAnalyticsController;
+use App\Http\Controllers\Admin\ProductDiscountController as AdminProductDiscountController;
+use App\Http\Controllers\Admin\ProductVoucherController as AdminProductVoucherController;
+use App\Http\Controllers\Admin\FlashSaleController as AdminFlashSaleController;
+use App\Http\Controllers\Admin\FreeShippingController as AdminFreeShippingController;
+use App\Http\Controllers\Admin\CategoryController as AdminCategoryController;
+use App\Http\Controllers\Admin\FeaturedProductController as AdminFeaturedProductController;
 
 
-// ============================================================
-// ===============  API PUBLIC (Mobile / Flutter)  =============
-// ============================================================
+// Prefix automatically /api from Laravel
 
-Route::prefix('mobile')->group(function () {
-    // Registrasi dari Flutter
-    Route::post('/register', [AdminCustomerController::class, 'registerFromMobile']);
 
-    // Login (jika ada)
+
+// Endpoint admin (JSON) untuk daftar dan approval customer
+Route::prefix('admin')->group(function () {
+    Route::get('/customers', [AdminCustomerController::class, 'index']);
+    Route::get('/customers/pending-count', [AdminCustomerController::class, 'pendingCount']);
+    Route::patch('/customers/{id}/status', [AdminCustomerController::class, 'updateStatus']);
+});
+
+// Public endpoint untuk membuat/menyimpan customer dari mobile app
+Route::post('/customers', [AdminCustomerController::class, 'storeFromMobile']);
+Route::post('/mobile/register', [CustomerController::class, 'registerFromMobile']);
+// Auth routes
+Route::prefix('auth')->group(function () {
+    Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
-
-    // Endpoint publik lainnya…
+    Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth.token');
+    Route::get('/me', [AuthController::class, 'me'])->middleware('auth.token');
+    Route::get('/status', [AuthController::class, 'status'])->middleware('auth.token');
 });
 
+// Admin widgets (auth required, permission handled in controller)
+Route::middleware('auth.token')->group(function () {
+    // Dashboard
+    Route::get('/dashboard/enhanced', [DashboardController::class, 'enhanced']);
 
-// ============================================================
-// ====================  ADMIN API SECTION  ====================
-// ============================================================
+    // Orders & Customers
+    Route::get('/orders', [AdminOrderController::class, 'index']);
+    Route::put('/orders/{id}/tracking', [AdminOrderController::class, 'updateTracking']);
+    Route::delete('/orders/{id}', [AdminOrderController::class, 'destroy']);
+    Route::get('/customers', [AdminCustomerController::class, 'index']);
+    Route::get('/customers/pending/count', [AdminCustomerController::class, 'pendingCount']);
+    Route::put('/customers/{id}/status', [AdminCustomerController::class, 'updateStatus']);
 
-// CUSTOMER (Admin Dashboard)
-Route::prefix('admin/customers')->group(function () {
-    Route::get('/', [AdminCustomerController::class, 'index']);
-    Route::get('/pending/count', [AdminCustomerController::class, 'pendingCount']);
-    Route::post('/{id}/status', [AdminCustomerController::class, 'updateStatus']);
+    // Reviews
+    Route::get('/reviews', [AdminReviewController::class, 'index']);
+    Route::post('/reviews/{id}', [AdminReviewController::class, 'action']);
+    Route::post('/reviews/{id}/delete', [AdminReviewController::class, 'delete']);
+
+    // Promotions analytics
+    Route::get('/promotions/analytics', [AdminPromotionsController::class, 'analytics']);
+
+    // Products (for dropdowns etc.)
+    Route::get('/products', [AdminProductController::class, 'index']);
+    Route::get('/products/{id}', [AdminProductController::class, 'show']);
+    Route::post('/products', [AdminProductController::class, 'store']);
+    Route::put('/products/{id}', [AdminProductController::class, 'update']);
+    Route::delete('/products/{id}', [AdminProductController::class, 'destroy']);
+
+    // Vouchers list (admin)
+    Route::get('/vouchers', [AdminVoucherController::class, 'index']);
+    Route::get('/vouchers/{id}', [AdminVoucherController::class, 'show']);
+    Route::post('/vouchers', [AdminVoucherController::class, 'store']);
+    Route::put('/vouchers/{id}', [AdminVoucherController::class, 'update']);
+    Route::delete('/vouchers/{id}', [AdminVoucherController::class, 'destroy']);
+    Route::get('/widgets', [AdminWidgetController::class, 'index']);
+    Route::post('/widgets', [AdminWidgetController::class, 'store']);
+    Route::put('/widgets/{id}', [AdminWidgetController::class, 'update']);
+    Route::delete('/widgets/{id}', [AdminWidgetController::class, 'destroy']);
+    Route::get('/widgets/banner', [AdminWidgetController::class, 'getBanner']);
+    Route::post('/widgets/banner', [AdminWidgetController::class, 'uploadBanner']);
+
+    // Upload (multipart images)
+    Route::post('/upload', [AdminUploadController::class, 'upload']);
+
+    // Reports & Analytics
+    Route::get('/reports/best-sellers', [AdminAnalyticsController::class, 'bestSellers']);
+    Route::get('/analytics', [AdminAnalyticsController::class, 'analyticsSummary']);
+    Route::get('/analytics/product-sales', [AdminAnalyticsController::class, 'productSales']);
+    Route::get('/analytics/category-sales', [AdminAnalyticsController::class, 'categorySales']);
+    Route::get('/analytics/sales-trend', [AdminAnalyticsController::class, 'salesTrend']);
+    Route::get('/analytics/monthly-profit-loss', [AdminAnalyticsController::class, 'monthlyProfitLoss']);
+    Route::get('/analytics/monthly-bestsellers', [AdminAnalyticsController::class, 'monthlyBestsellers']);
+
+    // Product Discounts CRUD
+    Route::get('/product-discounts', [AdminProductDiscountController::class, 'index']);
+    Route::get('/product-discounts/{id}', [AdminProductDiscountController::class, 'show']);
+    Route::post('/product-discounts', [AdminProductDiscountController::class, 'store']);
+    Route::put('/product-discounts/{id}', [AdminProductDiscountController::class, 'update']);
+    Route::delete('/product-discounts/{id}', [AdminProductDiscountController::class, 'destroy']);
+
+    // Product Vouchers CRUD (uses product_vouchers table)
+    Route::get('/product-vouchers', [AdminProductVoucherController::class, 'index']);
+    Route::get('/product-vouchers/{id}', [AdminProductVoucherController::class, 'show']);
+    Route::post('/product-vouchers', [AdminProductVoucherController::class, 'store']);
+    Route::put('/product-vouchers/{id}', [AdminProductVoucherController::class, 'update']);
+    Route::delete('/product-vouchers/{id}', [AdminProductVoucherController::class, 'destroy']);
+
+    // Flash Sales CRUD
+    Route::get('/flash-sales', [AdminFlashSaleController::class, 'index']);
+    Route::get('/flash-sales/{id}', [AdminFlashSaleController::class, 'show']);
+    Route::post('/flash-sales', [AdminFlashSaleController::class, 'store']);
+    Route::put('/flash-sales/{id}', [AdminFlashSaleController::class, 'update']);
+    Route::delete('/flash-sales/{id}', [AdminFlashSaleController::class, 'destroy']);
+
+    // Free Shipping CRUD
+    Route::get('/free-shipping', [AdminFreeShippingController::class, 'index']);
+    Route::get('/free-shipping/{id}', [AdminFreeShippingController::class, 'show']);
+    Route::post('/free-shipping', [AdminFreeShippingController::class, 'store']);
+    Route::put('/free-shipping/{id}', [AdminFreeShippingController::class, 'update']);
+    Route::delete('/free-shipping/{id}', [AdminFreeShippingController::class, 'destroy']);
+
+    // Categories (Admin)
+    Route::get('/categories', [AdminCategoryController::class, 'index']);
+    Route::get('/categories/{id}', [AdminCategoryController::class, 'show']);
+    Route::post('/categories', [AdminCategoryController::class, 'store']);
+    Route::put('/categories/{id}', [AdminCategoryController::class, 'update']);
+    Route::delete('/categories/{id}', [AdminCategoryController::class, 'destroy']);
+    Route::get('/categories/test', [AdminCategoryController::class, 'test']);
+    Route::post('/categories/init', [AdminCategoryController::class, 'init']);
+
+    // Admin management
+    Route::get('/admin/users', [AdminUserController::class, 'index']);
+    Route::post('/admin/users', [AdminUserController::class, 'store']);
+    Route::put('/admin/users/{id}', [AdminUserController::class, 'update']);
+    Route::patch('/admin/users/{id}/status', [AdminUserController::class, 'toggleStatus']);
+    Route::delete('/admin/users/{id}', [AdminUserController::class, 'destroy']);
+
+    // Featured products (Best Sellers publishing to user page)
+    Route::get('/featured-products', [AdminFeaturedProductController::class, 'index']);
+    Route::post('/featured-products', [AdminFeaturedProductController::class, 'store']);
+    Route::delete('/featured-products/{id}', [AdminFeaturedProductController::class, 'destroy']);
 });
 
-// PRODUCTS
-Route::prefix('admin/products')->group(function () {
-    Route::get('/', [AdminProductController::class, 'index']);
-    Route::post('/', [AdminProductController::class, 'store']);
-    Route::get('/{id}', [AdminProductController::class, 'show']);
-    Route::put('/{id}', [AdminProductController::class, 'update']);
-    Route::delete('/{id}', [AdminProductController::class, 'destroy']);
+// Public endpoints for mobile/user app
+Route::prefix('public')->group(function () {
+    Route::get('/products', [PublicApiController::class, 'products']);
+    Route::get('/top-products', [PublicApiController::class, 'topProducts']);
+    Route::get('/widgets', [PublicApiController::class, 'widgets']);
+    Route::get('/vouchers', [PublicApiController::class, 'vouchers']);
+    Route::get('/flash-sales', [PublicApiController::class, 'flashSales']);
+    Route::get('/free-shipping', [PublicApiController::class, 'freeShipping']);
+    Route::post('/orders', [PublicApiController::class, 'createOrder']);
+    Route::get('/orders', [PublicApiController::class, 'listOrders']);
+    Route::post('/orders/{id}/complete', [PublicApiController::class, 'completeOrder']);
+    Route::post('/reviews', [PublicApiController::class, 'upsertReview']);
+    Route::get('/reviews', [PublicApiController::class, 'listReviews']);
+    Route::get('/categories', [PublicApiController::class, 'categories']);
+    Route::get('/customer-status', [PublicApiController::class, 'customerStatus']);
+    Route::get('/customers', [AdminCustomerController::class, 'index']);
 });
 
-// ORDERS
-Route::prefix('admin/orders')->group(function () {
-    Route::get('/', [AdminOrderController::class, 'index']);
-    Route::post('/status/{id}', [AdminOrderController::class, 'updateStatus']);
-});
-
-// REVIEWS
-Route::get('/admin/reviews', [AdminReviewController::class, 'index']);
-
-// VOUCHER
-Route::prefix('admin/vouchers')->group(function () {
-    Route::get('/', [AdminVoucherController::class, 'index']);
-    Route::post('/', [AdminVoucherController::class, 'store']);
-    Route::put('/{id}', [AdminVoucherController::class, 'update']);
-    Route::delete('/{id}', [AdminVoucherController::class, 'destroy']);
-});
-
-
-// ============================================================
-// ====================  PUBLIC API UMUM  ======================
-// ============================================================
-
-Route::get('/order_items/{orderId}', [OrderItemController::class, 'getItems']);
-Route::get('/profit-loss', [ProfitLossController::class, 'index']);
-
-
-// ============================================================
-// ================  AUTH (Forgot Password) ====================
-// ============================================================
-
-Route::post('/password/email', [PasswordResetController::class, 'forgot']);
-Route::post('/password/reset', [PasswordResetController::class, 'reset']);
+// Fallback JSON for any unmatched /api/* route to avoid HTML 404 pages in frontend
+Route::any('/{any}', function () {
+    return response()->json(['success' => false, 'message' => 'API endpoint not found'], 404);
+})->where('any', '.*');
