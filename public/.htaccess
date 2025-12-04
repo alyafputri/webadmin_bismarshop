@@ -1,25 +1,29 @@
 # =========================
-# CORS GLOBAL
+# CORS GLOBAL (API & FILE)
 # =========================
 <IfModule mod_headers.c>
-    # Izinkan semua origin (untuk development; di produksi sebaiknya dibatasi)
+    # Untuk development: izinkan semua origin
+    # Di production sebaiknya diganti ke domain final (mis: https://bismarshop.indobismar.com)
     Header always set Access-Control-Allow-Origin "*"
     Header always set Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
     Header always set Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+    Header always set Access-Control-Max-Age "86400"
 
-    # Jika OPTIONS, cukup balas 200 dan stop di sini
-    <IfModule mod_rewrite.c>
-        RewriteEngine On
-        RewriteCond %{REQUEST_METHOD} OPTIONS
-        RewriteRule ^(.*)$ $1 [R=200,L]
-    </IfModule>
+    # CORS khusus file gambar (uploads, widget, dll.)
+    <FilesMatch "\.(jpg|jpeg|png|gif|webp|svg)$">
+        Header always set Access-Control-Allow-Origin "*"
+    </FilesMatch>
 </IfModule>
 
 # =========================
-# Rewrite (Laravel/front controller)
+# REWRITE (Laravel / Front Controller)
 # =========================
 <IfModule mod_rewrite.c>
     RewriteEngine On
+
+    # Tangani preflight OPTIONS agar tidak 404 / 403
+    RewriteCond %{REQUEST_METHOD} OPTIONS
+    RewriteRule ^(.*)$ $1 [R=200,L]
 
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
