@@ -1,15 +1,23 @@
+# =========================
+# CORS GLOBAL
+# =========================
 <IfModule mod_headers.c>
-    # Izinkan akses dari Flutter Web saat development
+    # Izinkan semua origin (untuk development; di produksi sebaiknya dibatasi)
     Header always set Access-Control-Allow-Origin "*"
     Header always set Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
     Header always set Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization"
 
-    # Tangani preflight OPTIONS agar tidak 404/403
-    RewriteEngine On
-    RewriteCond %{REQUEST_METHOD} OPTIONS
-    RewriteRule ^(.*)$ $1 [R=200,L]
+    # Jika OPTIONS, cukup balas 200 dan stop di sini
+    <IfModule mod_rewrite.c>
+        RewriteEngine On
+        RewriteCond %{REQUEST_METHOD} OPTIONS
+        RewriteRule ^(.*)$ $1 [R=200,L]
+    </IfModule>
 </IfModule>
 
+# =========================
+# Rewrite (Laravel/front controller)
+# =========================
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
