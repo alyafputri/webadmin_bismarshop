@@ -1,14 +1,19 @@
+# =========================
+# CORS untuk file gambar
+# =========================
 <IfModule mod_headers.c>
-    # Izinkan semua origin mengakses gambar di /widget dan /uploads
-    <LocationMatch "^/widget/.*\.(jpg|jpeg|png|gif|webp|svg)$">
+    # Izinkan semua origin mengakses file gambar (termasuk /widget dan /uploads)
+    <FilesMatch "\.(jpg|jpeg|png|gif|webp|svg)$">
         Header set Access-Control-Allow-Origin "*"
-    </LocationMatch>
-
-    <LocationMatch "^/uploads/.*\.(jpg|jpeg|png|gif|webp|svg)$">
-        Header set Access-Control-Allow-Origin "*"
-    </LocationMatch>
+        # Jika perlu header lain:
+        # Header set Access-Control-Allow-Methods "GET, OPTIONS"
+        # Header set Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept"
+    </FilesMatch>
 </IfModule>
 
+# =========================
+# Rewrite (typical Laravel / front controller)
+# =========================
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
