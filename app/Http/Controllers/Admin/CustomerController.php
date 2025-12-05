@@ -171,7 +171,7 @@ public function updateStatus(Request $req, $id)
 
         // Ambil juga role_id untuk bedakan admin/staff
         $user = DB::selectOne(
-            'SELECT id, name, email, role_id FROM users WHERE id = ? LIMIT 1',
+            'SELECT id, name, email, phone, role_id FROM users WHERE id = ? LIMIT 1',
             [$userId]
         );
 
@@ -192,8 +192,13 @@ public function updateStatus(Request $req, $id)
 
         DB::insert(
             'INSERT INTO customers (name, email, phone, address, status, created_at, updated_at)
-             VALUES (?, ?, NULL, NULL, ?, NOW(), NOW())',
-            [$user->name, $user->email, $status]
+            VALUES (?, ?, ?, NULL, ?, NOW(), NOW())',
+            [
+                $user->name,
+                $user->email,
+                $user->phone ?? null,  // nomor HP user
+                $status,
+            ]
         );
 
         DB::update(
