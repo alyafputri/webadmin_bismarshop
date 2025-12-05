@@ -13,7 +13,7 @@ class CustomerController extends BaseController
     // ============================================================
     public function index(Request $req)
     {
-        $status = $req->query('status'); 
+        $status = $req->query('status');
         $q      = $req->query('q');
 
         try {
@@ -34,7 +34,6 @@ class CustomerController extends BaseController
             }
 
             $customers = $query->get();
-
 
             // ============================
             // 2. User pending (belum masuk customers)
@@ -62,7 +61,6 @@ class CustomerController extends BaseController
 
             $pendingUsers = $pending->get();
 
-
             // ============================
             // Gabungkan semuanya
             // ============================
@@ -70,18 +68,16 @@ class CustomerController extends BaseController
 
             return response()->json([
                 'success' => true,
-                'data' => $rows,
+                'data'    => $rows,
             ]);
-
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'data' => [],
-                'error' => $e->getMessage(),
+                'data'    => [],
+                'error'   => $e->getMessage(),
             ]);
         }
     }
-
 
     // ============================================================
     // ====================== PENDING COUNT ========================
@@ -90,7 +86,7 @@ class CustomerController extends BaseController
     {
         try {
             // Customer inactive = belum approve
-            $c1 = DB::selectOne("SELECT COUNT(*) AS cnt FROM customers WHERE status = 'inactive'");
+            $c1   = DB::selectOne("SELECT COUNT(*) AS cnt FROM customers WHERE status = 'inactive'");
             $cnt1 = (int) ($c1->cnt ?? 0);
 
             // User pending = belum masuk customers
@@ -113,8 +109,6 @@ class CustomerController extends BaseController
             ]);
         }
     }
-
-
 
     // ============================================================
     // ==================== UPDATE STATUS ==========================
@@ -152,7 +146,9 @@ class CustomerController extends BaseController
                             [$status === 'active' ? 1 : 0, $cust->email]
                         );
                     }
-                } catch (\Throwable $e) {}
+                } catch (\Throwable $e) {
+                    // ignore sync error
+                }
 
                 return response()->json([
                     'success' => true,
@@ -198,7 +194,6 @@ class CustomerController extends BaseController
                     'status' => $status,
                 ],
             ]);
-
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -208,10 +203,8 @@ class CustomerController extends BaseController
         }
     }
 
-
-
     // ============================================================
-    // ===============  REGISTER DARI APK FLUTTER  =================
+    // ===============  REGISTER DARI APK FLUTTER  ================
     // ============================================================
     public function registerFromMobile(Request $req)
     {
@@ -237,7 +230,7 @@ class CustomerController extends BaseController
                 ], 409);
             }
 
-            // Buat user login (HARUSNYA is_active = 0 agar pending)
+            // Buat user login (is_active = 0 agar pending)
             DB::insert("
                 INSERT INTO users (name, email, password, role_id, is_active, created_at, updated_at)
                 VALUES (?, ?, ?, 0, 0, NOW(), NOW())
@@ -251,7 +244,6 @@ class CustomerController extends BaseController
                 'success' => true,
                 'message' => 'Registrasi berhasil. Menunggu persetujuan admin.',
             ], 201);
-
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -259,5 +251,18 @@ class CustomerController extends BaseController
                 'error'   => $e->getMessage(),
             ], 500);
         }
+    }
+
+    // ============================================================
+    // ===============  ALIAS UNTUK ROUTE MOBILE  =================
+    // ============================================================
+    /**
+     * Alias untuk kompatibilitas:
+     * Route: POST /api/customers → CustomerController@storeFromMobile
+     * Method ini hanya meneruskan ke registerFromMobile.
+     */
+    public function storeFromMobile(Request $req)
+    {
+        return $this->registerFromMobile($req);
     }
 }
