@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Support\Facades\DB;
-
+use Illuminate\Support\Facades\Schema;
 class PublicApiController extends BaseController
 {
     private function normalizeImage(?string $p): string
@@ -327,142 +327,165 @@ class PublicApiController extends BaseController
 
     public function createOrder(Request $req)
     {
-    $b = $req->all();
-    $customerName    = $b['customerName'] ?? $b['name'] ?? null;
-    $customerEmail   = $b['customerEmail'] ?? $b['email'] ?? null;
-    $shippingAddress = $b['shippingAddress'] ?? $b['address'] ?? null;
-    $trackingNumber  = $b['trackingNumber'] ?? null;
-    $totalAmount     = $b['totalAmount'] ?? null;
-    $items           = $b['items'] ?? [];
+        $b = $req->all();
+        $customerName    = $b['customerName']    ?? $b['name']    ?? null;
+        $customerEmail   = $b['customerEmail']   ?? $b['email']   ?? null;
+        $shippingAddress = $b['shippingAddress'] ?? $b['address'] ?? null;
+        $trackingNumber  = $b['trackingNumber']  ?? null;
+        $totalAmount     = $b['totalAmount']     ?? null;
+        $items           = $b['items']           ?? [];
 
-    if (!$customerEmail || !is_array($items) || count($items) === 0) {
-        return response()->json(['success' => false, 'message' => 'Invalid payload'], 400);
-    }
-
-    // Validate customer exists (customer / customers / users active)
-    $exists = false;
-
-    try {
-        if (Schema::hasTable('customer')) {
-            $exists = DB::table('customer')->where('email', $customerEmail)->exists();
+        if (!$customerEmail || !is_array($items) || count($items) === 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid payload',
+            ], 400);
         }
-    } catch (\Throwable $e) {
-        // abaikan error tabel lama
-    }
 
-    if (!$exists) {
-        try {
-            if (Schema::hasTable('customers')) {
-                $exists = DB::table('customers')->where('email', $customerEmail)->exists();
-            }
-        } catch (\Throwable $e) {
-            // abaikan
-        }
-    }
+        $emailLower = strtolower((string) $customerEmail);
 
-    // Tambahan: izinkan juga jika user aktif di tabel users
-    if (!$exists) {
+        // ============================================================
+        // VALIDASI: user harus terdaftar & (jika ada is_active) sudah aktif
+        // ============================================================
+        $exists = false;
+
+        // Cek di tabel users (utama)
         try {
             if (Schema::hasTable('users')) {
-                $exists = DB::table('users')
-                    ->where('email', $customerEmail)
-                    ->where(function ($q) {
-                        $q->whereNull('is_active')
-                          ->orWhere('is_active', 1);
-                    })
-                    ->exists();
+                $query = DB::table('users')->whereRaw('LOWER(email) = ?', [$emailLower]);
+                if (Schema::hasColumn('users', 'is_active')) {
+                    $query->where('is_active', 1);
+                }
+                $exists = $query->exists();
             }
         } catch (\Throwable $e) {
-            // abaikan
+            $exists = false;
         }
-    }
 
-    if (!$exists) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Silakan login terlebih dahulu sebelum checkout',
-        ], 401);
-    }
+        // Kalau belum ketemu, cek di tabel customers (kalau ada)
+        if (!$exists) {
+            try {
+                if (Schema::hasTable('customers')) {
+                    $exists = DB::table('customers')
+                        ->whereRaw('LOWER(email) = ?', [$emailLower])
+                        ->exists();
+                }
+            } catch (\Throwable $e) {
+                // abaikan
+            }
+        }
 
-    try {
-        DB::beginTransaction();
+        // Kalau masih belum ketemu dan ada tabel legacy customer, cek juga
+        if (!$exists) {
+            try {
+                if (Schema::hasTable('customer')) {
+                    $exists = DB::table('customer')
+                        ->whereRaw('LOWER(email) = ?', [$emailLower])
+                        ->exists();
+                }
+            } catch (\Throwable $e) {
+                // abaikan
+            }
+        }
 
-        // Ensure optional columns exist in orders table
-        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_address VARCHAR(255) NULL"); } catch (\Throwable $e) {}
-        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number VARCHAR(100) NULL"); } catch (\Throwable $e) {}
-        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL"); } catch (\Throwable $e) {}
-        try { DB::statement("ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_image VARCHAR(1024) NULL"); } catch (\Throwable $e) {}
+        if (!$exists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Silakan login terlebih dahulu sebelum checkout',
+            ], 401);
+        }
 
-        $id = DB::table('orders')->insertGetId([
-            'customer_id'      => null,
-            'customer_name'    => $customerName ?: explode('@', (string) $customerEmail)[0],
-            'customer_email'   => $customerEmail,
-            'shipping_address' => $shippingAddress,
-            'tracking_number'  => $trackingNumber,
-            'status'           => 'pending',
-            'total_amount'     => (int) round((float) ($totalAmount ?? 0)),
-            'created_at'       => now(),
-        ]);
+        // ============================================================
+        // CREATE ORDER
+        // ============================================================
+        try {
+            DB::beginTransaction();
 
-        foreach ($items as $it) {
-            $pid  = $it['productId'] ?? null;
-            $pid  = ($pid === '' ? null : $pid);
-            $pimg = isset($it['productImage']) && trim((string) $it['productImage']) !== '' ? (string) $it['productImage'] : null;
+            // Ensure optional columns exist in orders / order_items
+            try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_address VARCHAR(255) NULL"); } catch (\Throwable $e) {}
+            try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number VARCHAR(100) NULL"); } catch (\Throwable $e) {}
+            try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL"); } catch (\Throwable $e) {}
+            try { DB::statement("ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_image VARCHAR(1024) NULL"); } catch (\Throwable $e) {}
 
-            if ($pid !== null) {
-                try {
-                    $valid = DB::table('products')->where('id', $pid)->exists();
-                    if (!$valid) {
+            $id = DB::table('orders')->insertGetId([
+                'customer_id'      => null,
+                'customer_name'    => $customerName ?: explode('@', (string) $customerEmail)[0],
+                'customer_email'   => $customerEmail,
+                'shipping_address' => $shippingAddress,
+                'tracking_number'  => $trackingNumber,
+                'status'           => 'pending',
+                'total_amount'     => (int) round((float) ($totalAmount ?? 0)),
+                'created_at'       => now(),
+            ]);
+
+            foreach ($items as $it) {
+                $pid  = $it['productId'] ?? null;
+                $pid  = ($pid === '' ? null : $pid);
+                $pimg = isset($it['productImage']) && trim((string) $it['productImage']) !== '' ? (string) $it['productImage'] : null;
+
+                if ($pid !== null) {
+                    try {
+                        $valid = DB::table('products')->where('id', $pid)->exists();
+                        if (!$valid) {
+                            $pid = null;
+                        }
+                    } catch (\Throwable $e) {
                         $pid = null;
                     }
-                } catch (\Throwable $e) {
-                    $pid = null;
                 }
-            }
 
-            if (!$pimg) {
-                try {
-                    if ($pid !== null) {
-                        $imgRow = DB::selectOne("SELECT image_url FROM product_images WHERE product_id = ? ORDER BY sort_order, id LIMIT 1", [$pid]);
-                        if ($imgRow && $imgRow->image_url) {
-                            $pimg = $imgRow->image_url;
-                        }
-                    }
-                    if (!$pimg) {
-                        $pidRow = DB::selectOne("SELECT id FROM products WHERE name = ? LIMIT 1", [$it['productName'] ?? '']);
-                        if ($pidRow) {
-                            $imgRow2 = DB::selectOne("SELECT image_url FROM product_images WHERE product_id = ? ORDER BY sort_order, id LIMIT 1", [$pidRow->id]);
-                            if ($imgRow2 && $imgRow2->image_url) {
-                                $pimg = $imgRow2->image_url;
+                if (!$pimg) {
+                    try {
+                        if ($pid !== null) {
+                            $imgRow = DB::selectOne(
+                                "SELECT image_url FROM product_images WHERE product_id = ? ORDER BY sort_order, id LIMIT 1",
+                                [$pid]
+                            );
+                            if ($imgRow && $imgRow->image_url) {
+                                $pimg = $imgRow->image_url;
                             }
                         }
+                        if (!$pimg) {
+                            $pidRow = DB::selectOne(
+                                "SELECT id FROM products WHERE name = ? LIMIT 1",
+                                [$it['productName'] ?? '']
+                            );
+                            if ($pidRow) {
+                                $imgRow2 = DB::selectOne(
+                                    "SELECT image_url FROM product_images WHERE product_id = ? ORDER BY sort_order, id LIMIT 1",
+                                    [$pidRow->id]
+                                );
+                                if ($imgRow2 && $imgRow2->image_url) {
+                                    $pimg = $imgRow2->image_url;
+                                }
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        // abaikan
                     }
-                } catch (\Throwable $e) {
-                    // abaikan
                 }
+
+                DB::table('order_items')->insert([
+                    'order_id'      => $id,
+                    'product_id'    => $pid,
+                    'product_name'  => $it['productName'] ?? 'Unknown',
+                    'product_image' => $pimg,
+                    'quantity'      => (int) ($it['quantity'] ?? 1),
+                    'price'         => (int) round((float) ($it['price'] ?? 0)),
+                ]);
             }
 
-            DB::table('order_items')->insert([
-                'order_id'      => $id,
-                'product_id'    => $pid,
-                'product_name'  => $it['productName'] ?? 'Unknown',
-                'product_image' => $pimg,
-                'quantity'      => (int) ($it['quantity'] ?? 1),
-                'price'         => (int) round((float) ($it['price'] ?? 0)),
-            ]);
+            DB::commit();
+
+            return response()->json(['success' => true, 'id' => $id]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create public order',
+            ], 500);
         }
-
-        DB::commit();
-
-        return response()->json(['success' => true, 'id' => $id]);
-    } catch (\Throwable $e) {
-        DB::rollBack();
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to create public order',
-        ], 500);
     }
-}
     public function listOrders(Request $req)
     {
         try {
