@@ -18,7 +18,7 @@ class CustomerController extends BaseController
 
         try {
             // ============================
-            // 1. Data customer yang sudah approve
+            // 1. Data customer yang sudah approve / terdaftar
             // ============================
             $query = DB::table('customers')->orderBy('id', 'DESC');
 
@@ -44,8 +44,13 @@ class CustomerController extends BaseController
                 ->where(function ($q) {
                     // Hanya user biasa, bukan admin/staff
                     $q->whereNull('u.role_id')
-                    ->orWhere('u.role_id', 0);
-                }) // FIX UTAMA
+                      ->orWhere('u.role_id', 0);
+                })
+                // Tambahan: hanya user yang belum aktif yang dianggap pending
+                ->where(function ($q) {
+                    $q->whereNull('u.is_active')
+                      ->orWhere('u.is_active', 0);
+                })
                 ->select(
                     'u.id as id',
                     'u.name',
@@ -94,13 +99,14 @@ class CustomerController extends BaseController
             $c1   = DB::selectOne("SELECT COUNT(*) AS cnt FROM customers WHERE status = 'inactive'");
             $cnt1 = (int) ($c1->cnt ?? 0);
 
-            // User pending = belum masuk customers
+            // User pending = belum masuk customers + belum aktif
             $c2 = DB::selectOne("
                 SELECT COUNT(*) AS cnt
                 FROM users u
                 LEFT JOIN customers c ON c.email = u.email
                 WHERE c.email IS NULL
-                AND (u.role_id IS NULL OR u.role_id = 0)
+                  AND (u.role_id IS NULL OR u.role_id = 0)
+                  AND (u.is_active IS NULL OR u.is_active = 0)
             ");
             $cnt2 = (int) ($c2->cnt ?? 0);
 
@@ -119,104 +125,109 @@ class CustomerController extends BaseController
     // ============================================================
     // ==================== UPDATE STATUS ==========================
     // ============================================================
-public function updateStatus(Request $req, $id)
-{
-    $status = $req->input('status');
-    $valid  = ['active', 'inactive', 'banned'];
+    public function updateStatus(Request $req, $id)
+    {
+        $status = $req->input('status');
+        $valid  = ['active', 'inactive', 'banned'];
 
-    if (!in_array($status, $valid, true)) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Invalid status.',
-        ], 400);
-    }
-
-    try {
-        $customerId = (int) $id;
-
-        // 1. Update existing customer
-        $affected = DB::update(
-            'UPDATE customers SET status = ? WHERE id = ?',
-            [$status, $customerId]
-        );
-
-        if ($affected > 0) {
-            try {
-                $cust = DB::selectOne(
-                    'SELECT email FROM customers WHERE id = ? LIMIT 1',
-                    [$customerId]
-                );
-                if ($cust && $cust->email) {
-                    DB::update(
-                        'UPDATE users SET is_active = ? WHERE email = ?',
-                        [$status === 'active' ? 1 : 0, $cust->email]
-                    );
-                }
-            } catch (\Throwable $e) {
-                // ignore sync error
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Customer status updated',
-                'data'    => [
-                    'id'     => $customerId,
-                    'status' => $status,
-                ],
-            ]);
-        }
-
-        // 2. Jika belum customer → jadikan customer baru
-        $userId = (int) $id;
-
-        // Ambil juga role_id untuk bedakan admin/staff
-        $user = DB::selectOne(
-            'SELECT id, name, email, role_id FROM users WHERE id = ? LIMIT 1',
-            [$userId]
-        );
-
-        if (!$user || !$user->email) {
+        if (!in_array($status, $valid, true)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Customer not found',
-            ], 404);
-        }
-
-        // Jangan jadikan admin/staff sebagai customer
-        if (!is_null($user->role_id) && (int) $user->role_id !== 0) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Cannot change status for admin/staff account.',
+                'message' => 'Invalid status.',
             ], 400);
         }
 
-        DB::insert(
-            'INSERT INTO customers (name, email, phone, address, status, created_at, updated_at)
-             VALUES (?, ?, NULL, NULL, ?, NOW(), NOW())',
-            [$user->name, $user->email, $status]
-        );
+        try {
+            $customerId = (int) $id;
 
-        DB::update(
-            'UPDATE users SET is_active = ? WHERE id = ?',
-            [$status === 'active' ? 1 : 0, $userId]
-        );
+            // 1. Update existing customer
+            $affected = DB::update(
+                'UPDATE customers SET status = ? WHERE id = ?',
+                [$status, $customerId]
+            );
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Customer status updated from users table',
-            'data'    => [
-                'id'     => $userId,
-                'status' => $status,
-            ],
-        ]);
-    } catch (\Throwable $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Error updating customer status',
-            'error'   => $e->getMessage(),
-        ], 500);
+            if ($affected > 0) {
+                try {
+                    $cust = DB::selectOne(
+                        'SELECT email FROM customers WHERE id = ? LIMIT 1',
+                        [$customerId]
+                    );
+                    if ($cust && $cust->email) {
+                        DB::update(
+                            'UPDATE users SET is_active = ? WHERE email = ?',
+                            [$status === 'active' ? 1 : 0, $cust->email]
+                        );
+                    }
+                } catch (\Throwable $e) {
+                    // ignore sync error
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Customer status updated',
+                    'data'    => [
+                        'id'     => $customerId,
+                        'status' => $status,
+                    ],
+                ]);
+            }
+
+            // 2. Jika belum customer → jadikan customer baru
+            $userId = (int) $id;
+
+            // Ambil juga role_id untuk bedakan admin/staff
+            $user = DB::selectOne(
+                'SELECT id, name, email, phone, role_id FROM users WHERE id = ? LIMIT 1',
+                [$userId]
+            );
+
+            if (!$user || !$user->email) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Customer not found',
+                ], 404);
+            }
+
+            // Jangan jadikan admin/staff sebagai customer
+            if (!is_null($user->role_id) && (int) $user->role_id !== 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot change status for admin/staff account.',
+                ], 400);
+            }
+
+            DB::insert(
+                'INSERT INTO customers (name, email, phone, address, status, created_at, updated_at)
+                 VALUES (?, ?, ?, NULL, ?, NOW(), NOW())',
+                [
+                    $user->name,
+                    $user->email,
+                    $user->phone ?? null,
+                    $status,
+                ]
+            );
+
+            DB::update(
+                'UPDATE users SET is_active = ? WHERE id = ?',
+                [$status === 'active' ? 1 : 0, $userId]
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Customer status updated from users table',
+                'data'    => [
+                    'id'     => $userId,
+                    'status' => $status,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating customer status',
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
     }
-}
 
     // ============================================================
     // ===============  REGISTER DARI APK FLUTTER  ================
@@ -263,6 +274,65 @@ public function updateStatus(Request $req, $id)
             return response()->json([
                 'success' => false,
                 'message' => 'Terjadi kesalahan server.',
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    // ============================================================
+    // ===============  STATUS UNTUK APK FLUTTER  =================
+    // ============================================================
+    public function statusForMobile(Request $req)
+    {
+        $email = $req->query('email');
+        if (!$email) {
+            return response()->json([
+                'success' => false,
+                'found'   => false,
+                'status'  => null,
+                'message' => 'Email is required',
+            ], 400);
+        }
+
+        try {
+            // Cek di tabel customers dulu
+            $cust = DB::selectOne(
+                'SELECT status FROM customers WHERE email = ? LIMIT 1',
+                [$email]
+            );
+
+            if ($cust) {
+                return response()->json([
+                    'success' => true,
+                    'found'   => true,
+                    'status'  => $cust->status, // 'active' / 'inactive' / 'banned'
+                ]);
+            }
+
+            // Kalau belum ada di customers, cek users.is_active
+            $user = DB::selectOne(
+                'SELECT is_active FROM users WHERE email = ? LIMIT 1',
+                [$email]
+            );
+
+            if ($user) {
+                return response()->json([
+                    'success' => true,
+                    'found'   => true,
+                    'status'  => ((int) $user->is_active === 1) ? 'active' : 'inactive',
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'found'   => false,
+                'status'  => null,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'found'   => false,
+                'status'  => null,
                 'error'   => $e->getMessage(),
             ], 500);
         }

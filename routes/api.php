@@ -21,23 +21,29 @@ use App\Http\Controllers\Admin\FreeShippingController as AdminFreeShippingContro
 use App\Http\Controllers\Admin\CategoryController as AdminCategoryController;
 use App\Http\Controllers\Admin\FeaturedProductController as AdminFeaturedProductController;
 
+// Prefix otomatis /api dari Laravel
 
-// Prefix automatically /api from Laravel
-
-
-
-// Endpoint admin (JSON) untuk daftar dan approval customer
+// ============================================================
+// ================ ADMIN CUSTOMER (JSON) =====================
+// ============================================================
 Route::prefix('admin')->group(function () {
     Route::get('/customers', [AdminCustomerController::class, 'index']);
     Route::get('/customers/pending-count', [AdminCustomerController::class, 'pendingCount']);
     Route::patch('/customers/{id}/status', [AdminCustomerController::class, 'updateStatus']);
 });
 
+// ============================================================
+// ================ MOBILE CUSTOMER ENDPOINTS =================
+// ============================================================
+
 // Public endpoint untuk membuat/menyimpan customer dari mobile app
 Route::post('/customers', [AdminCustomerController::class, 'registerFromMobile']);
-Route::get('/public/customer-status', [AdminCustomerController::class, 'statusForMobile']);
 
-// Auth routes
+// (Status akun untuk mobile akan disediakan di prefix 'public' di bawah)
+
+// ============================================================
+// ======================= AUTH ROUTES ========================
+// ============================================================
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
@@ -46,7 +52,9 @@ Route::prefix('auth')->group(function () {
     Route::get('/status', [AuthController::class, 'status'])->middleware('auth.token');
 });
 
-// Admin widgets (auth required, permission handled in controller)
+// ============================================================
+// =================== ADMIN AREA (TOKEN) =====================
+// ============================================================
 Route::middleware('auth.token')->group(function () {
     // Dashboard
     Route::get('/dashboard/enhanced', [DashboardController::class, 'enhanced']);
@@ -55,6 +63,7 @@ Route::middleware('auth.token')->group(function () {
     Route::get('/orders', [AdminOrderController::class, 'index']);
     Route::put('/orders/{id}/tracking', [AdminOrderController::class, 'updateTracking']);
     Route::delete('/orders/{id}', [AdminOrderController::class, 'destroy']);
+
     Route::get('/customers', [AdminCustomerController::class, 'index']);
     Route::get('/customers/pending/count', [AdminCustomerController::class, 'pendingCount']);
     Route::put('/customers/{id}/status', [AdminCustomerController::class, 'updateStatus']);
@@ -80,6 +89,8 @@ Route::middleware('auth.token')->group(function () {
     Route::post('/vouchers', [AdminVoucherController::class, 'store']);
     Route::put('/vouchers/{id}', [AdminVoucherController::class, 'update']);
     Route::delete('/vouchers/{id}', [AdminVoucherController::class, 'destroy']);
+
+    // Widgets (admin)
     Route::get('/widgets', [AdminWidgetController::class, 'index']);
     Route::post('/widgets', [AdminWidgetController::class, 'store']);
     Route::put('/widgets/{id}', [AdminWidgetController::class, 'update']);
@@ -149,7 +160,9 @@ Route::middleware('auth.token')->group(function () {
     Route::delete('/featured-products/{id}', [AdminFeaturedProductController::class, 'destroy']);
 });
 
-// Public endpoints for mobile/user app
+// ============================================================
+// ========== PUBLIC ENDPOINTS UNTUK MOBILE / USER ============
+// ============================================================
 Route::prefix('public')->group(function () {
     Route::get('/products', [PublicApiController::class, 'products']);
     Route::get('/top-products', [PublicApiController::class, 'topProducts']);
@@ -157,17 +170,26 @@ Route::prefix('public')->group(function () {
     Route::get('/vouchers', [PublicApiController::class, 'vouchers']);
     Route::get('/flash-sales', [PublicApiController::class, 'flashSales']);
     Route::get('/free-shipping', [PublicApiController::class, 'freeShipping']);
+
     Route::post('/orders', [PublicApiController::class, 'createOrder']);
     Route::get('/orders', [PublicApiController::class, 'listOrders']);
     Route::post('/orders/{id}/complete', [PublicApiController::class, 'completeOrder']);
+
     Route::post('/reviews', [PublicApiController::class, 'upsertReview']);
     Route::get('/reviews', [PublicApiController::class, 'listReviews']);
+
     Route::get('/categories', [PublicApiController::class, 'categories']);
-    Route::get('/customer-status', [PublicApiController::class, 'customerStatus']);
+
+    // Status akun customer (dipakai Flutter /pending_approval + auto refresh)
+    Route::get('/customer-status', [AdminCustomerController::class, 'statusForMobile']);
+
+    // (opsional) daftar pelanggan publik (kalau memang mau)
     Route::get('/customers', [AdminCustomerController::class, 'index']);
 });
 
-// Fallback JSON for any unmatched /api/* route to avoid HTML 404 pages in frontend
+// ============================================================
+// =================== API FALLBACK HANDLER ===================
+// ============================================================
 Route::any('/{any}', function () {
     return response()->json(['success' => false, 'message' => 'API endpoint not found'], 404);
 })->where('any', '.*');
