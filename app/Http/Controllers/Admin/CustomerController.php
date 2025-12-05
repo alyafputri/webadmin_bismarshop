@@ -171,7 +171,7 @@ public function updateStatus(Request $req, $id)
 
         // Ambil juga role_id untuk bedakan admin/staff
         $user = DB::selectOne(
-            'SELECT id, name, email, phone, role_id FROM users WHERE id = ? LIMIT 1',
+            'SELECT id, name, email, role_id FROM users WHERE id = ? LIMIT 1',
             [$userId]
         );
 
@@ -192,13 +192,8 @@ public function updateStatus(Request $req, $id)
 
         DB::insert(
             'INSERT INTO customers (name, email, phone, address, status, created_at, updated_at)
-            VALUES (?, ?, ?, NULL, ?, NOW(), NOW())',
-            [
-                $user->name,
-                $user->email,
-                $user->phone ?? null,  // nomor HP user
-                $status,
-            ]
+             VALUES (?, ?, NULL, NULL, ?, NOW(), NOW())',
+            [$user->name, $user->email, $status]
         );
 
         DB::update(
@@ -272,63 +267,17 @@ public function updateStatus(Request $req, $id)
             ], 500);
         }
     }
-// ============================================================
-// ===============  STATUS UNTUK APK FLUTTER  =================
-// ============================================================
-    public function statusForMobile(Request $req)
+
+    // ============================================================
+    // ===============  ALIAS UNTUK ROUTE MOBILE  =================
+    // ============================================================
+    /**
+     * Alias untuk kompatibilitas:
+     * Route: POST /api/customers → CustomerController@storeFromMobile
+     * Method ini hanya meneruskan ke registerFromMobile.
+     */
+    public function storeFromMobile(Request $req)
     {
-        $email = $req->query('email');
-        if (!$email) {
-            return response()->json([
-                'success' => false,
-                'found'   => false,
-                'status'  => null,
-                'message' => 'Email is required',
-            ], 400);
-        }
-
-        try {
-            // Cek di tabel customers dulu
-            $cust = DB::selectOne(
-                'SELECT status FROM customers WHERE email = ? LIMIT 1',
-                [$email]
-            );
-
-            if ($cust) {
-                return response()->json([
-                    'success' => true,
-                    'found'   => true,
-                    'status'  => $cust->status, // 'active' / 'inactive' / 'banned'
-                ]);
-            }
-
-            // Kalau belum ada di customers, cek users.is_active
-            $user = DB::selectOne(
-                'SELECT is_active FROM users WHERE email = ? LIMIT 1',
-                [$email]
-            );
-
-            if ($user) {
-                return response()->json([
-                    'success' => true,
-                    'found'   => true,
-                    'status'  => ((int)$user->is_active === 1) ? 'active' : 'inactive',
-                ]);
-            }
-
-            return response()->json([
-                'success' => true,
-                'found'   => false,
-                'status'  => null,
-            ]);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'success' => false,
-                'found'   => false,
-                'status'  => null,
-                'error'   => $e->getMessage(),
-            ], 500);
-        }
+        return $this->registerFromMobile($req);
     }
-
 }
