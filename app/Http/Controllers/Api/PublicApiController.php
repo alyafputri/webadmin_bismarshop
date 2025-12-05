@@ -345,18 +345,17 @@ class PublicApiController extends BaseController
         $emailLower = strtolower((string) $customerEmail);
 
         // ============================================================
-        // VALIDASI: user harus terdaftar & (jika ada is_active) sudah aktif
+        // VALIDASI: user harus terdaftar (sudah pernah register/login)
+        // Tidak lagi memaksa is_active = 1 di sini; approval diatur di level aplikasi
         // ============================================================
         $exists = false;
 
         // Cek di tabel users (utama)
         try {
             if (Schema::hasTable('users')) {
-                $query = DB::table('users')->whereRaw('LOWER(email) = ?', [$emailLower]);
-                if (Schema::hasColumn('users', 'is_active')) {
-                    $query->where('is_active', 1);
-                }
-                $exists = $query->exists();
+                $exists = DB::table('users')
+                    ->whereRaw('LOWER(email) = ?', [$emailLower])
+                    ->exists();
             }
         } catch (\Throwable $e) {
             $exists = false;
