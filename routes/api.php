@@ -35,6 +35,7 @@ Route::prefix('admin')->group(function () {
 
 // Public endpoint untuk membuat/menyimpan customer dari mobile app
 Route::post('/customers', [AdminCustomerController::class, 'registerFromMobile']);
+Route::get('/public/customer-status', [AdminCustomerController::class, 'statusForMobile']);
 
 // Auth routes
 Route::prefix('auth')->group(function () {

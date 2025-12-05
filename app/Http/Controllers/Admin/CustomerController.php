@@ -272,17 +272,63 @@ public function updateStatus(Request $req, $id)
             ], 500);
         }
     }
-
-    // ============================================================
-    // ===============  ALIAS UNTUK ROUTE MOBILE  =================
-    // ============================================================
-    /**
-     * Alias untuk kompatibilitas:
-     * Route: POST /api/customers → CustomerController@storeFromMobile
-     * Method ini hanya meneruskan ke registerFromMobile.
-     */
-    public function storeFromMobile(Request $req)
+// ============================================================
+// ===============  STATUS UNTUK APK FLUTTER  =================
+// ============================================================
+    public function statusForMobile(Request $req)
     {
-        return $this->registerFromMobile($req);
+        $email = $req->query('email');
+        if (!$email) {
+            return response()->json([
+                'success' => false,
+                'found'   => false,
+                'status'  => null,
+                'message' => 'Email is required',
+            ], 400);
+        }
+
+        try {
+            // Cek di tabel customers dulu
+            $cust = DB::selectOne(
+                'SELECT status FROM customers WHERE email = ? LIMIT 1',
+                [$email]
+            );
+
+            if ($cust) {
+                return response()->json([
+                    'success' => true,
+                    'found'   => true,
+                    'status'  => $cust->status, // 'active' / 'inactive' / 'banned'
+                ]);
+            }
+
+            // Kalau belum ada di customers, cek users.is_active
+            $user = DB::selectOne(
+                'SELECT is_active FROM users WHERE email = ? LIMIT 1',
+                [$email]
+            );
+
+            if ($user) {
+                return response()->json([
+                    'success' => true,
+                    'found'   => true,
+                    'status'  => ((int)$user->is_active === 1) ? 'active' : 'inactive',
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'found'   => false,
+                'status'  => null,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'found'   => false,
+                'status'  => null,
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
     }
+
 }
