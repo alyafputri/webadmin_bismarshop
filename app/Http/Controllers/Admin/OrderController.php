@@ -77,7 +77,7 @@ class OrderController extends BaseController
             }
 
             $status = (string)$req->input('status', '');
-            if (!in_array($status, ['pending', 'processing', 'shipped', 'completed', 'cancelled'])) {
+            if (!in_array($status, ['pending', 'processing', 'shipped', 'completed', 'canceled'])) {
                 return response()->json(['success' => false, 'message' => 'Invalid status'], 400);
             }
 

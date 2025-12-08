@@ -433,7 +433,7 @@ window.editOrderTracking = async function editOrderTracking(id) {
         if (tracking === null) return; // user batal
 
         const payload = { tracking };
-        const result = await apiCall(`/api/orders/${idStr}`, 'PUT', payload);
+        const result = await apiCall(`/api/orders/${idStr}/tracking`, 'PUT', payload);
         console.log('Update tracking response:', result);
 
         if (result && result.success) {
@@ -3446,7 +3446,7 @@ function updateOrdersTable() {
                     <option value="processing" ${String(order.status).toLowerCase()==='processing' ? 'selected' : ''}>Processing</option>
                     <option value="shipped" ${String(order.status).toLowerCase()==='shipped' ? 'selected' : ''}>Shipped</option>
                     <option value="completed" ${String(order.status).toLowerCase()==='completed' ? 'selected' : ''}>Completed</option>
-                    <option value="cancelled" ${String(order.status).toLowerCase()==='cancelled' ? 'selected' : ''}>Cancelled</option>
+                    <option value="canceled" ${String(order.status).toLowerCase()==='canceled' ? 'selected' : ''}>Canceled</option>
                 </select>
             </td>
             <td>${formatDate(order.created_at)}</td>
