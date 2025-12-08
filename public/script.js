@@ -3,70 +3,41 @@
 // Global variables
 let currentSection = 'dashboard';
 let products = [];
-let orders = [];
-let customers = [];
-let dashboardStats = {};
-let enhancedDashboardData = {};
-let currentUser = null;
-let authToken = null;
-let userPermissions = [];
-
-// Client-side permissions map as a fallback in case API does not return permissions
-const rolesPermissions = {
-    super_admin: [
-        'dashboard', 'products', 'customers', 'orders',
-        'vouchers', 'flash-sales', 'free-shipping', 'product-vouchers',
-        'reviews', 'analytics', 'categories', 'settings', 'widgets', 'best-sellers', 'admin-management'
-    ],
-    manager: [
-        'dashboard', 'products', 'customers',
-        'vouchers', 'flash-sales', 'free-shipping', 'product-vouchers',
-        'reviews', 'widgets', 'categories', 'best-sellers'
-    ],
-    staff: [
-        'dashboard', 'products', 'customers', 'reviews', 'categories', 'best-sellers'
-    ]
-};
-
-// Initialize the application
-document.addEventListener('DOMContentLoaded', function() {
-    checkAuthentication();
-    
-    // Force show admin menu after a short delay
-    setTimeout(() => {
-        showAdminMenu();
-    }, 1000);
-});
-
-// Force refresh function for testing
-window.forceRefreshAuth = function() {
-    localStorage.removeItem('adminToken');
-    sessionStorage.removeItem('adminToken');
-    location.reload();
-};
-
-// Debug function to test widgets
-window.testWidgets = async function() {
-    console.log('🧪 Testing widgets functionality...');
-
-    try {
-        const resp = await fetch('/api/widgets', {
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
-
-        console.log('📡 Response status:', resp.status);
-        console.log('📡 Response headers:', [...resp.headers.entries()]);
-
-        const data = await resp.json();
-        console.log('📊 Response data:', data);
-
-        const tbody = document.getElementById('widgetsTableBody');
-        console.log('📋 Table body element:', tbody);
-
-        if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-success">✅ Test berhasil!</td></tr>';
+    orders.forEach(order => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>#${order.id}</td>
+            <td>${order.customer_name}</td>
+            <td>${order.customer_email}</td>
+            <td>${escapeHtml(order.shipping_address || '-')}</td>
+            <td>
+                <span id="trk-${order.id}">${escapeHtml(order.tracking_number || '-')}</span>
+                <button class="btn btn-sm btn-link text-decoration-none" onclick="editOrderTracking('${order.id}')" title="Edit tracking">
+                    <i class="fas fa-edit"></i>
+                </button>
+            </td>
+            <td class="currency">${formatCurrency(order.total_amount)}</td>
+            <td>
+                <select class="form-select form-select-sm" data-current="${String(order.status || '')}" onchange="updateOrderStatus('${order.id}', this.value, this)">
+                    <option value="pending" ${String(order.status).toLowerCase()==='pending' ? 'selected' : ''}>Pending</option>
+                    <option value="processing" ${String(order.status).toLowerCase()==='processing' ? 'selected' : ''}>Processing</option>
+                    <option value="shipped" ${String(order.status).toLowerCase()==='shipped' ? 'selected' : ''}>Shipped</option>
+                    <option value="completed" ${String(order.status).toLowerCase()==='completed' ? 'selected' : ''}>Completed</option>
+                    <option value="canceled" ${String(order.status).toLowerCase()==='canceled' ? 'selected' : ''}>Canceled</option>
+                </select>
+            </td>
+            <td>${formatDate(order.created_at)}</td>
+            <td class="action-buttons">
+                <button class="btn btn-sm btn-outline-info" onclick="viewOrderDetails('${order.id}')" title="View Details">
+                    <i class="fas fa-eye"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-success" onclick="printReceipt('${order.id}')" title="Print Receipt">
+                    <i class="fas fa-print"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
         }
 
     } catch (error) {
@@ -431,10 +402,6 @@ window.editOrderTracking = async function editOrderTracking(id) {
         const current = order ? (order.tracking_number || order.tracking || '') : '';
         const tracking = prompt('Masukkan informasi tracking (resi / status pengiriman):', current);
         if (tracking === null) return; // user batal
-        if (!tracking || tracking.trim() === '') {
-            showNotification('Tracking tidak boleh kosong!', 'error');
-            return;
-        }
 
         const payload = { tracking };
         const result = await apiCall(`/api/orders/${idStr}/tracking`, 'PUT', payload);
@@ -3496,32 +3463,25 @@ async function forceCancelOrder(orderId) {
 
 async function updateOrderStatus(orderId, newStatus, el = null) {
     try {
-        console.log(`DEBUG: updateOrderStatus called - orderId=${orderId}, newStatus=${newStatus}, el.value=${el?.value}`);
         const prev = el ? (el.getAttribute('data-prev') || el.getAttribute('data-current') || el.value) : null;
         if (el) {
             el.setAttribute('data-prev', prev);
             el.disabled = true;
         }
-        console.log(`DEBUG: About to send API call with status=${newStatus}`);
         let resp = await apiCall(`/api/orders/${orderId}`, 'PUT', { status: newStatus });
-        console.log(`DEBUG: API response for PUT:`, resp);
         if (!resp || resp.success !== true) {
             // Fallback to POST /status
-            console.log(`DEBUG: PUT failed, trying POST fallback`);
             resp = await apiCall(`/api/orders/${orderId}/status`, 'POST', { status: newStatus });
-            console.log(`DEBUG: API response for POST:`, resp);
             if (!resp || resp.success !== true) {
                 if (el && prev) el.value = prev;
                 showNotification(resp && resp.message ? 'Failed: ' + resp.message : 'Failed to update order status', 'error');
                 return;
             }
         }
-        console.log(`DEBUG: API call succeeded, updating local data`);
         showNotification('Order status updated successfully!', 'success');
         // Optimistic update: update local array and rerender immediately
         const idx = Array.isArray(orders) ? orders.findIndex(o => String(o.id) === String(orderId)) : -1;
         if (idx >= 0) {
-            console.log(`DEBUG: Found order at index ${idx}, old status=${orders[idx].status}, new status=${newStatus}`);
             orders[idx].status = newStatus;
             updateOrdersTable();
         }

@@ -77,40 +77,21 @@ class OrderController extends BaseController
             }
 
             $status = (string)$req->input('status', '');
-            $body = $req->getContent();
-            \Log::debug("OrderController::update - orderId=$orderId, status='$status'");
-            \Log::debug("OrderController::update - raw body=$body");
-            \Log::debug("OrderController::update - all inputs=" . json_encode($req->all()));
-            
             if (!in_array($status, ['pending', 'processing', 'shipped', 'completed', 'canceled'])) {
-                \Log::warning("OrderController::update - Invalid status value: '$status'");
                 return response()->json(['success' => false, 'message' => 'Invalid status'], 400);
             }
 
-            \Log::debug("OrderController::update - About to execute UPDATE with status='$status', orderId=$orderId");
-            
             $affected = DB::update(
                 'UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ? LIMIT 1',
                 [$status, $orderId]
             );
-            
-            \Log::debug("OrderController::update - UPDATE executed, affected rows=$affected");
-            
-            // Verify the update by reading back
-            $verify = DB::selectOne('SELECT id, status FROM orders WHERE id = ? LIMIT 1', [$orderId]);
-            if ($verify) {
-                \Log::debug("OrderController::update - Verification: order id={$verify->id}, status='{$verify->status}'");
-            }
 
             if ($affected === 0) {
-                \Log::warning("OrderController::update - No rows affected, order not found");
                 return response()->json(['success' => false, 'message' => 'Order not found'], 404);
             }
 
-            return response()->json(['success' => true, 'message' => 'Order updated successfully', 'status' => $status]);
+            return response()->json(['success' => true, 'message' => 'Order updated successfully']);
         } catch (\Throwable $e) {
-            \Log::error("OrderController::update error: " . $e->getMessage());
-            \Log::error("OrderController::update exception: " . $e->__toString());
             return response()->json(['success' => false, 'message' => 'Failed to update order'], 500);
         }
     }

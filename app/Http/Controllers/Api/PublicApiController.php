@@ -567,8 +567,7 @@ class PublicApiController extends BaseController
 
             if (strtolower((string)$row->customer_email) !== strtolower($email)) return response()->json(['success' => false, 'message' => 'Forbidden'], 403);
 
-            // If already canceled or completed, return appropriate message
-            if ($row->status === 'canceled' || $row->status === 'cancelled') return response()->json(['success' => true, 'message' => 'Order already canceled']);
+            // Do not allow canceling completed orders
             if ($row->status === 'completed') return response()->json(['success' => false, 'message' => 'Cannot cancel a completed order'], 400);
 
             try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL"); } catch (\Throwable $e) {}
@@ -579,6 +578,7 @@ class PublicApiController extends BaseController
             return response()->json(['success' => false, 'message' => 'Failed to cancel order'], 500);
         }
     }
+    
 
     public function upsertReview(Request $req)
     {
