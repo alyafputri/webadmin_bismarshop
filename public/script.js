@@ -3461,10 +3461,37 @@ function updateOrdersTable() {
                 <button class="btn btn-sm btn-outline-success" onclick="printReceipt('${order.id}')" title="Print Receipt">
                     <i class="fas fa-print"></i>
                 </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="forceCancelOrder('${order.id}')" title="Cancel Order">
+                    <i class="fas fa-ban"></i> Cancel
+                </button>
             </td>
         `;
         tbody.appendChild(row);
     });
+// Fungsi untuk cancel order secara paksa
+async function forceCancelOrder(orderId) {
+    if (!orderId) return;
+    if (!confirm('Yakin ingin membatalkan pesanan ini?')) return;
+    try {
+        const resp = await apiCall(`/api/orders/${orderId}`, 'PUT', { status: 'canceled' });
+        if (resp && resp.success) {
+            showNotification('Pesanan berhasil dibatalkan!', 'success');
+            // Update status di local array dan refresh tabel
+            const idx = Array.isArray(orders) ? orders.findIndex(o => String(o.id) === String(orderId)) : -1;
+            if (idx >= 0) {
+                orders[idx].status = 'canceled';
+                updateOrdersTable();
+            }
+            // Refresh data dari server
+            loadDashboardData();
+        } else {
+            showNotification(resp && resp.message ? 'Gagal membatalkan pesanan: ' + resp.message : 'Gagal membatalkan pesanan', 'error');
+        }
+    } catch (e) {
+        showNotification('Terjadi kesalahan saat membatalkan pesanan', 'error');
+        console.error('forceCancelOrder error', e);
+    }
+}
 }
 
 async function updateOrderStatus(orderId, newStatus, el = null) {
