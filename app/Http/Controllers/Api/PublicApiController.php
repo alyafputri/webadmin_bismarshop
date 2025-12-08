@@ -397,14 +397,15 @@ class PublicApiController extends BaseController
         // ============================================================
         // CREATE ORDER
         // ============================================================
+        
+        // Ensure optional columns exist BEFORE transaction
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_address VARCHAR(255) NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number VARCHAR(100) NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_image VARCHAR(1024) NULL"); } catch (\Throwable $e) {}
+        
         try {
             DB::beginTransaction();
-
-            // Ensure optional columns exist in orders / order_items
-            try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_address VARCHAR(255) NULL"); } catch (\Throwable $e) {}
-            try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number VARCHAR(100) NULL"); } catch (\Throwable $e) {}
-            try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL"); } catch (\Throwable $e) {}
-            try { DB::statement("ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_image VARCHAR(1024) NULL"); } catch (\Throwable $e) {}
 
             $id = DB::table('orders')->insertGetId([
                 'customer_id'      => null,
