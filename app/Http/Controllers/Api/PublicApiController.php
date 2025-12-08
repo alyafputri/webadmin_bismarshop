@@ -479,9 +479,15 @@ class PublicApiController extends BaseController
             return response()->json(['success' => true, 'id' => $id]);
         } catch (\Throwable $e) {
             DB::rollBack();
+            \Log::error('Order Creation Error', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create public order',
+                'message' => 'Failed to create public order: ' . $e->getMessage(),
             ], 500);
         }
     }
