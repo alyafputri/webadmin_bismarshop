@@ -3465,25 +3465,32 @@ function updateOrdersTable() {
 
 async function updateOrderStatus(orderId, newStatus, el = null) {
     try {
+        console.log(`DEBUG: updateOrderStatus called - orderId=${orderId}, newStatus=${newStatus}, el.value=${el?.value}`);
         const prev = el ? (el.getAttribute('data-prev') || el.getAttribute('data-current') || el.value) : null;
         if (el) {
             el.setAttribute('data-prev', prev);
             el.disabled = true;
         }
+        console.log(`DEBUG: About to send API call with status=${newStatus}`);
         let resp = await apiCall(`/api/orders/${orderId}`, 'PUT', { status: newStatus });
+        console.log(`DEBUG: API response for PUT:`, resp);
         if (!resp || resp.success !== true) {
             // Fallback to POST /status
+            console.log(`DEBUG: PUT failed, trying POST fallback`);
             resp = await apiCall(`/api/orders/${orderId}/status`, 'POST', { status: newStatus });
+            console.log(`DEBUG: API response for POST:`, resp);
             if (!resp || resp.success !== true) {
                 if (el && prev) el.value = prev;
                 showNotification(resp && resp.message ? 'Failed: ' + resp.message : 'Failed to update order status', 'error');
                 return;
             }
         }
+        console.log(`DEBUG: API call succeeded, updating local data`);
         showNotification('Order status updated successfully!', 'success');
         // Optimistic update: update local array and rerender immediately
         const idx = Array.isArray(orders) ? orders.findIndex(o => String(o.id) === String(orderId)) : -1;
         if (idx >= 0) {
+            console.log(`DEBUG: Found order at index ${idx}, old status=${orders[idx].status}, new status=${newStatus}`);
             orders[idx].status = newStatus;
             updateOrdersTable();
         }
