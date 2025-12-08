@@ -1722,7 +1722,9 @@ function showSection(sectionName) {
             loadProductVouchers();
             break;
         case 'reviews':
-            loadReviews();
+            // Start lightweight live polling so new customer reviews appear automatically
+            // when an admin is viewing the reviews page.
+            startReviewsLive();
             break;
         case 'widgets':
             console.log('🎯 Loading widgets section...');
