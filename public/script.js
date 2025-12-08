@@ -431,6 +431,10 @@ window.editOrderTracking = async function editOrderTracking(id) {
         const current = order ? (order.tracking_number || order.tracking || '') : '';
         const tracking = prompt('Masukkan informasi tracking (resi / status pengiriman):', current);
         if (tracking === null) return; // user batal
+        if (!tracking || tracking.trim() === '') {
+            showNotification('Tracking tidak boleh kosong!', 'error');
+            return;
+        }
 
         const payload = { tracking };
         const result = await apiCall(`/api/orders/${idStr}/tracking`, 'PUT', payload);
