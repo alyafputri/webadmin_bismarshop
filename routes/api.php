@@ -61,7 +61,10 @@ Route::middleware('auth.token')->group(function () {
 
     // Orders & Customers
     Route::get('/orders', [AdminOrderController::class, 'index']);
+    Route::put('/orders/{id}', [AdminOrderController::class, 'update']);
+    Route::post('/orders/{id}/status', [AdminOrderController::class, 'updateStatus']);
     Route::put('/orders/{id}/tracking', [AdminOrderController::class, 'updateTracking']);
+    Route::get('/orders/{id}/receipt', [AdminOrderController::class, 'getReceipt']);
     Route::delete('/orders/{id}', [AdminOrderController::class, 'destroy']);
 
     Route::get('/customers', [AdminCustomerController::class, 'index']);

@@ -67,4 +67,69 @@ class OrderController extends BaseController
             return response()->json(['success' => false, 'message' => 'Failed to update tracking'], 500);
         }
     }
+
+    public function update(Request $req, $id)
+    {
+        try {
+            $orderId = (int)$id;
+            if ($orderId <= 0) {
+                return response()->json(['success' => false, 'message' => 'Invalid order ID'], 400);
+            }
+
+            $status = (string)$req->input('status', '');
+            if (!in_array($status, ['pending', 'processing', 'shipped', 'completed', 'cancelled'])) {
+                return response()->json(['success' => false, 'message' => 'Invalid status'], 400);
+            }
+
+            $affected = DB::update(
+                'UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ? LIMIT 1',
+                [$status, $orderId]
+            );
+
+            if ($affected === 0) {
+                return response()->json(['success' => false, 'message' => 'Order not found'], 404);
+            }
+
+            return response()->json(['success' => true, 'message' => 'Order updated successfully']);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Failed to update order'], 500);
+        }
+    }
+
+    public function updateStatus(Request $req, $id)
+    {
+        return $this->update($req, $id);
+    }
+
+    public function getReceipt(Request $req, $id)
+    {
+        try {
+            $orderId = (int)$id;
+            if ($orderId <= 0) {
+                return response()->json(['success' => false, 'message' => 'Invalid order ID'], 400);
+            }
+
+            // Get order
+            $order = DB::selectOne('SELECT * FROM orders WHERE id = ? LIMIT 1', [$orderId]);
+            if (!$order) {
+                return response()->json(['success' => false, 'message' => 'Order not found'], 404);
+            }
+
+            // Get order items
+            $items = DB::select(
+                'SELECT * FROM order_items WHERE order_id = ? ORDER BY id',
+                [$orderId]
+            );
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'order' => $order,
+                    'items' => $items
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Failed to get receipt'], 500);
+        }
+    }
 }
