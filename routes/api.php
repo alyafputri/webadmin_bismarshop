@@ -176,6 +176,7 @@ Route::prefix('public')->group(function () {
 
     Route::post('/orders', [PublicApiController::class, 'createOrder']);
     Route::get('/orders', [PublicApiController::class, 'listOrders']);
+    Route::post('/orders/{id}/cancel', [PublicApiController::class, 'cancelOrder']);
     Route::post('/orders/{id}/complete', [PublicApiController::class, 'completeOrder']);
 
     Route::post('/reviews', [PublicApiController::class, 'upsertReview']);

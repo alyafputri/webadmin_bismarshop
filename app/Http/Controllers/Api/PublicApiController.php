@@ -555,6 +555,31 @@ class PublicApiController extends BaseController
         }
     }
 
+    public function cancelOrder(Request $req, $id)
+    {
+        try {
+            $id = (int)$id;
+            $email = trim((string)($req->input('email') ?? ''));
+            if (!$id || $email === '') return response()->json(['success' => false, 'message' => 'Invalid id/email'], 400);
+
+            $row = DB::selectOne("SELECT status, customer_email FROM orders WHERE id = ? LIMIT 1", [$id]);
+            if (!$row) return response()->json(['success' => false, 'message' => 'Order not found'], 404);
+
+            if (strtolower((string)$row->customer_email) !== strtolower($email)) return response()->json(['success' => false, 'message' => 'Forbidden'], 403);
+
+            // If already canceled or completed, return appropriate message
+            if ($row->status === 'canceled' || $row->status === 'cancelled') return response()->json(['success' => true, 'message' => 'Order already canceled']);
+            if ($row->status === 'completed') return response()->json(['success' => false, 'message' => 'Cannot cancel a completed order'], 400);
+
+            try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL"); } catch (\Throwable $e) {}
+            $result = DB::update("UPDATE orders SET status = 'canceled', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [$id]);
+            if ($result === 0) return response()->json(['success' => false, 'message' => 'Order not found'], 404);
+            return response()->json(['success' => true, 'message' => 'Order canceled']);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Failed to cancel order'], 500);
+        }
+    }
+
     public function upsertReview(Request $req)
     {
         try {
