@@ -281,6 +281,8 @@ function renderOrders() {
         const sample = (allOrdersCache || []).slice(0, 5).map(x => normalizeOrderStatus(x.status || x.order_status));
         console.debug('[Orders] selected =', status || '(all)', 'total=', allOrdersCache.length, 'shown=', rows.length, 'sample statuses=', sample);
     } catch(_){ }
+    // Safety: Remove any leftover "view" eye icons that may persist in the Orders section
+    try { document.querySelectorAll('#orders .fa-eye').forEach(el => el.remove()); } catch(_) {}
 }
 
 function renderOrderRow(o) {
@@ -3389,6 +3391,8 @@ function updateOrdersTable() {
         `;
         tbody.appendChild(row);
     });
+    // Safety: ensure any leftover "view" icons inside the orders area are removed
+    try { document.querySelectorAll('#orders .fa-eye').forEach(el => el.remove()); } catch(_) {}
 // Fungsi untuk cancel order secara paksa
 async function forceCancelOrder(orderId) {
     if (!orderId) return;
