@@ -121,11 +121,51 @@ class OrderController extends BaseController
                 [$orderId]
             );
 
+            // Calculate totals
+            $subtotal = 0;
+            foreach ($items as $it) {
+                $qty = isset($it->quantity) ? (int)$it->quantity : 0;
+                $price = isset($it->price) ? (float)$it->price : 0.0;
+                $subtotal += $qty * $price;
+            }
+
+            // Tax: if order has tax field use it, otherwise default 10%
+            $tax = 0;
+            if (isset($order->tax_amount)) {
+                $tax = (float)$order->tax_amount;
+            } else {
+                $tax = round($subtotal * 0.10);
+            }
+
+            $shipping = isset($order->shipping_cost) ? (float)$order->shipping_cost : 0.0;
+            $grandTotal = $subtotal + $tax + $shipping;
+
+            // Store info fallback
+            $store = [
+                'name' => config('app.name') ?: 'Store',
+                'address' => config('app.store_address') ?? '',
+                'phone' => config('app.store_phone') ?? '',
+                'email' => config('mail.from.address') ?? '',
+                'website' => config('app.url') ?? ''
+            ];
+
+            $receiptNumber = isset($order->receipt_number) && $order->receipt_number ? $order->receipt_number : ('RE' . str_pad((string)$orderId, 6, '0', STR_PAD_LEFT));
+
+            // Attach items to order object for backward compatibility with client code
+            try { $order->items = $items; } catch (\Throwable $_) {}
+
             return response()->json([
                 'success' => true,
                 'data' => [
                     'order' => $order,
-                    'items' => $items
+                    'items' => $items,
+                    'store' => $store,
+                    'receiptNumber' => $receiptNumber,
+                    'printDate' => date('c'),
+                    'subtotal' => $subtotal,
+                    'tax' => $tax,
+                    'shipping' => $shipping,
+                    'grandTotal' => $grandTotal
                 ]
             ]);
         } catch (\Throwable $e) {
