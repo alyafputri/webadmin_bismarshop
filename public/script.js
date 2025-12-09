@@ -3,47 +3,6 @@
 // Global variables
 let currentSection = 'dashboard';
 let products = [];
-    orders.forEach(order => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>#${order.id}</td>
-            <td>${order.customer_name}</td>
-            <td>${order.customer_email}</td>
-            <td>${escapeHtml(order.shipping_address || '-')}</td>
-            <td>
-                <span id="trk-${order.id}">${escapeHtml(order.tracking_number || '-')}</span>
-                <button class="btn btn-sm btn-link text-decoration-none" onclick="editOrderTracking('${order.id}')" title="Edit tracking">
-                    <i class="fas fa-edit"></i>
-                </button>
-            </td>
-            <td class="currency">${formatCurrency(order.total_amount)}</td>
-            <td>
-                <select class="form-select form-select-sm" data-current="${String(order.status || '')}" onchange="updateOrderStatus('${order.id}', this.value, this)">
-                    <option value="pending" ${String(order.status).toLowerCase()==='pending' ? 'selected' : ''}>Pending</option>
-                    <option value="processing" ${String(order.status).toLowerCase()==='processing' ? 'selected' : ''}>Processing</option>
-                    <option value="shipped" ${String(order.status).toLowerCase()==='shipped' ? 'selected' : ''}>Shipped</option>
-                    <option value="completed" ${String(order.status).toLowerCase()==='completed' ? 'selected' : ''}>Completed</option>
-                    <option value="canceled" ${String(order.status).toLowerCase()==='canceled' ? 'selected' : ''}>Canceled</option>
-                </select>
-            </td>
-            <td>${formatDate(order.created_at)}</td>
-            <td class="action-buttons">
-                <button class="btn btn-sm btn-outline-info" onclick="viewOrderDetails('${order.id}')" title="View Details">
-                    <i class="fas fa-eye"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-success" onclick="printReceipt('${order.id}')" title="Print Receipt">
-                    <i class="fas fa-print"></i>
-                </button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
-        }
-
-    } catch (error) {
-        console.error('❌ Test widgets error:', error);
-    }
-};
 
 // Function to fix widget data and reload
 window.fixWidgetData = async function() {
@@ -3571,7 +3530,11 @@ async function printReceipt(orderId) {
 
 function generateReceiptHTML(receiptData) {
     const { order, store, receiptNumber, printDate, subtotal, tax, shipping, grandTotal } = receiptData;
-    const storeName = (store && store.name && String(store.name).trim() !== '' && String(store.name).trim().toLowerCase() !== 'laravel') ? store.name : 'PT Indo Bismar';
+    
+    // Determine store name - use fallback if not set or is "Laravel"
+    const storeName = (store && store.name && String(store.name).trim() !== '' && String(store.name).trim().toLowerCase() !== 'laravel') 
+        ? store.name 
+        : 'PT Indo Bismar';
     
     let itemsHtml = '';
     order.items.forEach(item => {
@@ -3683,9 +3646,9 @@ function generateReceiptHTML(receiptData) {
                 <!-- Header -->
                 <div class="header">
                     <div class="store-name">${storeName}</div>
-                        <div class="store-info">${store.address || ''}</div>
-                        <div class="store-info">Tel: ${store.phone || ''} | Email: ${store.email || ''}</div>
-                        ${store.website ? `<div class="store-info">Website: ${store.website}</div>` : ''}
+                    <div class="store-info">${store.address || ''}</div>
+                    <div class="store-info">Tel: ${store.phone || ''} | Email: ${store.email || ''}</div>
+                    ${store.website ? `<div class="store-info">Website: ${store.website}</div>` : ''}
                 </div>
                 
                 <!-- Receipt Info -->
