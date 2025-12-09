@@ -3400,20 +3400,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Container for dynamically injected modals -->
     <div id="modalsContainer"></div>
-        <!-- Ensure legacy inline onclicks calling viewOrder(...) won't throw if script.js is delayed or cached -->
-        <script>
-            if (!window.viewOrder) {
-                window.viewOrder = function(orderId){
-                    // try to delegate to the modern function when available
-                    try {
-                        if (window.showOrderDetailModal) return window.showOrderDetailModal(orderId);
-                    } catch(e){}
-                    // fallback: store id and try again shortly
-                    window.__pendingViewOrderId = orderId;
-                    setTimeout(function(){ if (window.showOrderDetailModal) window.showOrderDetailModal(window.__pendingViewOrderId); }, 200);
-                };
-            }
-        </script>
+        <!-- Legacy `viewOrder` handler removed; script loaded below -->
         <script src="script.js?v=2"></script>
 
     <!-- BEST SELLERS: Load all products from admin products table so admin can toggle "Tampilkan di User" -->
