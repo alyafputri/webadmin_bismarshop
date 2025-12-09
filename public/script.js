@@ -409,6 +409,7 @@ function formatDate(d) {
 }
 
 function capitalize(s){ return (s||'').charAt(0).toUpperCase() + (s||'').slice(1); }
+function capitalizeFirst(s){ return capitalize(s); } // Alias for backward compatibility
 
 // ===== Best Sellers Page =====
 window.loadBestSellers = async function loadBestSellers() {
@@ -3383,7 +3384,7 @@ function updateOrdersTable() {
             </td>
             <td>${formatDate(order.created_at)}</td>
             <td class="action-buttons">
-                <button class="btn btn-sm btn-outline-info" onclick="viewOrderDetails('${order.id}')" title="View Details">
+                <button class="btn btn-sm btn-outline-info" onclick="showOrderDetailModal('${order.id}')" title="View Details">
                     <i class="fas fa-eye"></i>
                 </button>
                 <button class="btn btn-sm btn-outline-success" onclick="printReceipt('${order.id}')" title="Print Receipt">
