@@ -140,13 +140,20 @@ class OrderController extends BaseController
             $shipping = isset($order->shipping_cost) ? (float)$order->shipping_cost : 0.0;
             $grandTotal = $subtotal + $tax + $shipping;
 
-            // Store info fallback
+            // Store info - always use PT Indo Bismar for name, get other details from config
+            $storeName = 'PT Indo Bismar'; // Hard-coded for consistency
+            $configName = config('app.name') ?: '';
+            // Only use config name if it's explicitly set and not "Laravel"
+            if (!empty($configName) && strtolower($configName) !== 'laravel') {
+                $storeName = $configName;
+            }
+            
             $store = [
-                'name' => config('app.name') ?: 'Store',
-                'address' => config('app.store_address') ?? '',
-                'phone' => config('app.store_phone') ?? '',
-                'email' => config('mail.from.address') ?? '',
-                'website' => config('app.url') ?? ''
+                'name' => $storeName,
+                'address' => config('app.store_address') ?? 'Jl. Bismarck, Jakarta',
+                'phone' => config('app.store_phone') ?? '(021) 555-0123',
+                'email' => config('mail.from.address') ?? 'info@bismarshop.com',
+                'website' => config('app.url') ?? 'https://bismarshop.id'
             ];
 
             $receiptNumber = isset($order->receipt_number) && $order->receipt_number ? $order->receipt_number : ('RE' . str_pad((string)$orderId, 6, '0', STR_PAD_LEFT));
