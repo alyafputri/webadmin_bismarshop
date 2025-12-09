@@ -316,9 +316,8 @@ function renderOrderRow(o) {
             </td>
             <td>${escapeHtml(date)}</td>
             <td>
-                <button class="btn btn-sm btn-outline-info" onclick="showOrderDetailModal(${id})" title="View Details"><i class="fas fa-eye"></i></button>
-                <button class="btn btn-sm btn-outline-success" onclick="printReceipt(${id})"><i class="fas fa-receipt"></i></button>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteOrder(${id})"><i class="fas fa-trash"></i></button>
+                <button class="btn btn-sm btn-outline-success" onclick="printReceipt(${id})">Cetak</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteOrder(${id})">Hapus</button>
             </td>
         </tr>`;
 }
@@ -3384,15 +3383,8 @@ function updateOrdersTable() {
             </td>
             <td>${formatDate(order.created_at)}</td>
             <td class="action-buttons">
-                <button class="btn btn-sm btn-outline-info" onclick="showOrderDetailModal('${order.id}')" title="View Details">
-                    <i class="fas fa-eye"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-success" onclick="printReceipt('${order.id}')" title="Print Receipt">
-                    <i class="fas fa-print"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-danger" onclick="forceCancelOrder('${order.id}')" title="Cancel Order">
-                    <i class="fas fa-ban"></i> Cancel
-                </button>
+                <button class="btn btn-sm btn-outline-success" onclick="printReceipt('${order.id}')" title="Print Receipt">Cetak</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="forceCancelOrder('${order.id}')" title="Cancel Order">Batal</button>
             </td>
         `;
         tbody.appendChild(row);
