@@ -3345,10 +3345,9 @@ async function updateOrderStatus(orderId, newStatus, el = null) {
     }
 }
 
-// Order detail modal and legacy view handlers removed per request
-// (Previously provided `showOrderDetailModal`, `viewOrderDetails`, and `window.viewOrder`.)
-// If you want to re-enable viewing order details, we can implement a new modal
-// or reintroduce a dedicated endpoint + UI handler on demand.
+// Order detail modal and legacy view handlers removed per request.
+// All runtime shims and modal UI for viewing orders/products have been deleted.
+// This file no longer exposes `viewOrder`, `viewOrderDetails`, `showOrderDetailModal`, or `viewProduct`.
 
 // Receipt printing functionality
 async function printReceipt(orderId) {
