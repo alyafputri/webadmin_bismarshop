@@ -3571,6 +3571,7 @@ async function printReceipt(orderId) {
 
 function generateReceiptHTML(receiptData) {
     const { order, store, receiptNumber, printDate, subtotal, tax, shipping, grandTotal } = receiptData;
+    const storeName = (store && store.name && String(store.name).trim() !== '' && String(store.name).trim().toLowerCase() !== 'laravel') ? store.name : 'PT Indo Bismar';
     
     let itemsHtml = '';
     order.items.forEach(item => {
@@ -3681,10 +3682,10 @@ function generateReceiptHTML(receiptData) {
             <div class="receipt-container">
                 <!-- Header -->
                 <div class="header">
-                    <div class="store-name">${store.name}</div>
-                    <div class="store-info">${store.address}</div>
-                    <div class="store-info">Tel: ${store.phone} | Email: ${store.email}</div>
-                    ${store.website ? `<div class="store-info">Website: ${store.website}</div>` : ''}
+                    <div class="store-name">${storeName}</div>
+                        <div class="store-info">${store.address || ''}</div>
+                        <div class="store-info">Tel: ${store.phone || ''} | Email: ${store.email || ''}</div>
+                        ${store.website ? `<div class="store-info">Website: ${store.website}</div>` : ''}
                 </div>
                 
                 <!-- Receipt Info -->
