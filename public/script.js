@@ -3604,6 +3604,8 @@ async function showOrderDetailModal(orderId) {
 function viewOrderDetails(orderId) {
     showOrderDetailModal(orderId);
 }
+// Global alias to support old inline onclicks that call `viewOrder(...)`
+window.viewOrder = function(orderId) { showOrderDetailModal(orderId); };
 
 // Receipt printing functionality
 async function printReceipt(orderId) {
