@@ -316,7 +316,7 @@ function renderOrderRow(o) {
             </td>
             <td>${escapeHtml(date)}</td>
             <td>
-                <button class="btn btn-sm btn-outline-info" onclick="viewOrder(${id})"><i class="fas fa-eye"></i></button>
+                <button class="btn btn-sm btn-outline-info" onclick="showOrderDetailModal(${id})" title="View Details"><i class="fas fa-eye"></i></button>
                 <button class="btn btn-sm btn-outline-success" onclick="printReceipt(${id})"><i class="fas fa-receipt"></i></button>
                 <button class="btn btn-sm btn-outline-danger" onclick="deleteOrder(${id})"><i class="fas fa-trash"></i></button>
             </td>
@@ -3460,34 +3460,152 @@ async function updateOrderStatus(orderId, newStatus, el = null) {
     }
 }
 
-function viewOrderDetails(orderId) {
-    const order = Array.isArray(orders) ? orders.find(o => String(o.id) === String(orderId)) : null;
-    if (!order) {
-        showNotification('Order details not found', 'error');
-        return;
+// Show order detail modal
+async function showOrderDetailModal(orderId) {
+    try {
+        // Fetch order details from API
+        const response = await apiCall(`/api/orders/${orderId}`);
+        if (!response || !response.success) {
+            showNotification('Gagal memuat detail order', 'error');
+            return;
+        }
+
+        const { order, items } = response.data;
+        
+        // Create modal if not exists
+        let modalEl = document.getElementById('orderDetailModal');
+        if (!modalEl) {
+            modalEl = document.createElement('div');
+            modalEl.className = 'modal fade';
+            modalEl.id = 'orderDetailModal';
+            modalEl.tabIndex = -1;
+            document.body.appendChild(modalEl);
+        }
+
+        // Render items table
+        let itemsHtml = '';
+        if (Array.isArray(items) && items.length > 0) {
+            items.forEach(item => {
+                const qty = Number(item.quantity) || 0;
+                const price = Number(item.price) || 0;
+                const itemTotal = price * qty;
+                itemsHtml += `
+                    <tr>
+                        <td>${escapeHtml(item.product_name || item.name || '-')}</td>
+                        <td class="text-center">${qty}</td>
+                        <td class="text-end">${formatCurrency(price)}</td>
+                        <td class="text-end fw-bold">${formatCurrency(itemTotal)}</td>
+                    </tr>
+                `;
+            });
+        } else {
+            itemsHtml = '<tr><td colspan="4" class="text-center text-muted">Tidak ada item</td></tr>';
+        }
+
+        // Calculate totals
+        const subtotal = Array.isArray(items) ? items.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)), 0) : 0;
+        const tax = subtotal * 0.1; // Assume 10% tax
+        const shipping = Number(order.shipping_cost) || 0;
+        const total = subtotal + tax + shipping;
+
+        // Create modal content
+        modalEl.innerHTML = `
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title"><i class="fas fa-receipt me-2"></i>Detail Order #${order.id}</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <!-- Customer Info -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <h6 class="text-muted text-uppercase fw-bold mb-2">Informasi Pelanggan</h6>
+                                <p class="mb-1"><strong>Nama:</strong> ${escapeHtml(order.customer_name || '-')}</p>
+                                <p class="mb-1"><strong>Email:</strong> ${escapeHtml(order.customer_email || '-')}</p>
+                                <p class="mb-1"><strong>Nomor Telp:</strong> ${escapeHtml(order.customer_phone || '-')}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="text-muted text-uppercase fw-bold mb-2">Informasi Pengiriman</h6>
+                                <p class="mb-1"><strong>Alamat:</strong> ${escapeHtml(order.shipping_address || order.address || '-')}</p>
+                                <p class="mb-1"><strong>Resi:</strong> ${escapeHtml(order.tracking_number || order.tracking || '-')}</p>
+                                <p class="mb-1"><strong>Tanggal:</strong> ${formatDate(order.created_at)}</p>
+                            </div>
+                        </div>
+
+                        <!-- Order Items -->
+                        <h6 class="text-muted text-uppercase fw-bold mb-3">Item Pesanan</h6>
+                        <div class="table-responsive mb-4">
+                            <table class="table table-sm table-bordered">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Produk</th>
+                                        <th class="text-center" style="width: 80px;">Qty</th>
+                                        <th class="text-end" style="width: 120px;">Harga</th>
+                                        <th class="text-end" style="width: 120px;">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${itemsHtml}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Totals -->
+                        <div class="row">
+                            <div class="col-md-6 offset-md-6">
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td class="text-end"><strong>Subtotal:</strong></td>
+                                        <td class="text-end">${formatCurrency(subtotal)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-end"><strong>Pajak (10%):</strong></td>
+                                        <td class="text-end">${formatCurrency(tax)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-end"><strong>Pengiriman:</strong></td>
+                                        <td class="text-end">${formatCurrency(shipping)}</td>
+                                    </tr>
+                                    <tr class="border-top border-2 fw-bold fs-6">
+                                        <td class="text-end">Total:</td>
+                                        <td class="text-end text-success">${formatCurrency(total)}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Status -->
+                        <div class="alert alert-info mb-0">
+                            <strong>Status:</strong> 
+                            <span class="badge bg-primary">${capitalizeFirst(order.status || 'pending')}</span>
+                            <strong class="ms-3">Total Amount:</strong>
+                            <span class="badge bg-success">${formatCurrency(order.total_amount || total)}</span>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+                        <button type="button" class="btn btn-primary" onclick="printReceipt(${order.id})" title="Print Receipt">
+                            <i class="fas fa-receipt me-2"></i>Cetak Nota
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Show modal
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+
+    } catch (error) {
+        console.error('Error loading order details:', error);
+        showNotification('Terjadi kesalahan saat memuat detail order', 'error');
     }
-    let itemsHtml = '';
-    const items = Array.isArray(order.items) ? order.items : [];
-    items.forEach(item => {
-        const qty = Number(item.quantity) || 0;
-        const price = Number(item.price) || 0;
-        itemsHtml += `<li>${escapeHtml(item.product_name || '-') } x${qty} - ${formatCurrency(price * qty)}</li>`;
-    });
+}
 
-    const details = `
-        <strong>Order #${order.id}</strong><br>
-        Customer: ${order.customer_name}<br>
-        Email: ${order.customer_email}<br>
-        Address: ${escapeHtml(order.shipping_address || '-') }<br>
-        Tracking: ${escapeHtml(order.tracking_number || '-') }<br>
-        Total: ${formatCurrency(order.total_amount)}<br>
-        Status: ${capitalizeFirst(order.status)}<br>
-        Date: ${formatDate(order.created_at)}<br><br>
-        <strong>Items:</strong><br>
-        <ul>${itemsHtml || '<li>-</li>'}</ul>
-    `;
-
-    showNotification(details, 'info', 10000);
+// Legacy function for backward compatibility
+function viewOrderDetails(orderId) {
+    showOrderDetailModal(orderId);
 }
 
 // Receipt printing functionality

@@ -61,6 +61,7 @@ Route::middleware('auth.token')->group(function () {
 
     // Orders & Customers
     Route::get('/orders', [AdminOrderController::class, 'index']);
+    Route::get('/orders/{id}', [AdminOrderController::class, 'show']);
     Route::put('/orders/{id}', [AdminOrderController::class, 'update']);
     Route::post('/orders/{id}/status', [AdminOrderController::class, 'updateStatus']);
     Route::put('/orders/{id}/tracking', [AdminOrderController::class, 'updateTracking']);

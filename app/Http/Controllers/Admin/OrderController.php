@@ -44,6 +44,34 @@ class OrderController extends BaseController
         }
     }
 
+    public function show($id)
+    {
+        try {
+            $orderId = (int)$id;
+            if ($orderId <= 0) {
+                return response()->json(['success' => false, 'message' => 'Invalid order ID'], 400);
+            }
+
+            $order = DB::selectOne('SELECT * FROM orders WHERE id = ? LIMIT 1', [$orderId]);
+            if (!$order) {
+                return response()->json(['success' => false, 'message' => 'Order not found'], 404);
+            }
+
+            // Get order items
+            $items = DB::select('SELECT * FROM order_items WHERE order_id = ?', [$orderId]);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'order' => $order,
+                    'items' => $items
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Failed to fetch order'], 500);
+        }
+    }
+
     public function updateTracking(Request $req, $id)
     {
         try {
