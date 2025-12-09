@@ -150,10 +150,10 @@ class OrderController extends BaseController
             
             $store = [
                 'name' => $storeName,
-                'address' => config('app.store_address') ?? 'Jl. Bismarck, Jakarta',
-                'phone' => config('app.store_phone') ?? '(021) 555-0123',
+                'address' => config('app.store_address') ?? 'Jl. Bendul Merisi Selatan XI No.59-61, Bendul Merisi, Kec. Wonocolo, Surabaya, Jawa Timur 60239',
+                'phone' => config('app.store_phone') ?? '(031) 8474685',
                 'email' => config('mail.from.address') ?? 'info@bismarshop.com',
-                'website' => config('app.url') ?? 'https://bismarshop.id'
+                'website' => config('app.url') ?? 'https://bismarshop.com'
             ];
 
             $receiptNumber = isset($order->receipt_number) && $order->receipt_number ? $order->receipt_number : ('RE' . str_pad((string)$orderId, 6, '0', STR_PAD_LEFT));
