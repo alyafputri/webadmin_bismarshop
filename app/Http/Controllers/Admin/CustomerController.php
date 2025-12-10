@@ -64,7 +64,8 @@ class CustomerController extends BaseController
             }
 
             if ($status) {
-                $query->where('status', $status);
+                // Gunakan alias tabel customers (c.status) agar tidak ambigu dengan kolom status lain
+                $query->where('c.status', $status);
             }
 
             if ($q) {
