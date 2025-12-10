@@ -1,3 +1,83 @@
+// ================= CUSTOMERS MANAGEMENT =================
+async function loadCustomers() {
+    const tbody = document.getElementById('customersTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><div class="mt-2">Loading customers...</div></td></tr>`;
+    try {
+        const resp = await apiCall('/api/customers', 'GET');
+        if (!resp || !resp.success) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">Gagal memuat data pelanggan</td></tr>`;
+            return;
+        }
+        const rows = Array.isArray(resp.data) ? resp.data : [];
+        if (!rows.length) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">Belum ada data pelanggan</td></tr>`;
+            return;
+        }
+        tbody.innerHTML = rows.map(renderCustomerRow).join('');
+    } catch (e) {
+        console.error('loadCustomers error', e);
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">Gagal memuat data pelanggan</td></tr>`;
+    }
+}
+
+function renderCustomerRow(c) {
+    // Fallbacks for missing fields
+    const name = c.name || '-';
+    const email = c.email || '-';
+    const phone = c.phone || '-';
+    const orders = typeof c.total_orders === 'number' ? c.total_orders : (parseInt(c.total_orders,10)||0);
+    const spent = typeof c.total_spent === 'number' ? c.total_spent : (parseInt(c.total_spent,10)||0);
+    const status = c.status || '-';
+    const joined = c.created_at ? formatDate(c.created_at) : '-';
+    // Status dropdown for admin update
+    const statusOptions = ['active','pending','banned'].map(s => `<option value="${s}" ${String(status).toLowerCase()===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
+    return `
+        <tr>
+            <td>${escapeHtml(name)}</td>
+            <td class="d-none d-md-table-cell">${escapeHtml(email)}</td>
+            <td class="d-none d-lg-table-cell">${escapeHtml(phone)}</td>
+            <td class="d-none d-sm-table-cell text-center">${orders}</td>
+            <td class="d-none d-md-table-cell text-end">${formatCurrency(spent)}</td>
+            <td class="text-center">
+                <select class="form-select form-select-sm w-auto d-inline" onchange="updateCustomerStatus(${c.id}, this.value, this)">
+                    ${statusOptions}
+                </select>
+                <span class="badge bg-${status==='active'?'success':status==='banned'?'danger':status==='pending'?'warning':'secondary'} text-uppercase ms-1">${escapeHtml(status)}</span>
+            </td>
+            <td class="d-none d-lg-table-cell text-center">${escapeHtml(joined)}</td>
+            <td class="text-center">-</td>
+        </tr>
+    `;
+// Update customer status handler
+window.updateCustomerStatus = async function updateCustomerStatus(id, newStatus, el) {
+    if (!id || !newStatus) return;
+    const prev = el ? el.value : null;
+    el && (el.disabled = true);
+    try {
+        const resp = await apiCall(`/api/customers/${id}/status`, 'PATCH', { status: newStatus });
+        if (resp && resp.success) {
+            showNotification('Status pelanggan berhasil diupdate', 'success');
+            // Optionally update badge text
+            const badge = el?.parentElement?.querySelector('.badge');
+            if (badge) {
+                badge.textContent = newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
+                badge.className = `badge bg-${newStatus==='active'?'success':newStatus==='banned'?'danger':newStatus==='pending'?'warning':'secondary'} text-uppercase ms-1`;
+            }
+        } else {
+            showNotification('Gagal update status pelanggan', 'error');
+            if (el && prev) el.value = prev;
+            console.error('Failed to update customer status:', resp);
+        }
+    } catch (e) {
+        showNotification('Terjadi kesalahan saat update status pelanggan', 'error');
+        if (el && prev) el.value = prev;
+        console.error('Failed to update customer status:', e);
+    } finally {
+        el && (el.disabled = false);
+    }
+}
+}
 // Main JavaScript for BismarShop Admin Dashboard
 
 // Global variables
