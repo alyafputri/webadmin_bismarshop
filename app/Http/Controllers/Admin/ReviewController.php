@@ -15,26 +15,8 @@ class ReviewController extends BaseController
         $page = max((int)$req->query('page', 1), 1);
         $offset = ($page - 1) * $limit;
 
-        // Pastikan struktur tabel reviews sama dengan yang dipakai oleh PublicApiController@upsertReview
-        DB::statement("CREATE TABLE IF NOT EXISTS reviews (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            customer_email VARCHAR(255) NOT NULL,
-            order_id INT NOT NULL,
-            product_id VARCHAR(64) NOT NULL,
-            rating INT NOT NULL,
-            comment TEXT NULL,
-            product_name VARCHAR(255) NULL,
-            product_image TEXT NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME NULL,
-            UNIQUE KEY uniq_review (customer_email, order_id, product_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
         $where = [];$params = [];
-        if ($q !== '') {
-            $where[] = '(customer_email LIKE ? OR product_name LIKE ? OR comment LIKE ?)';
-            array_push($params, "%$q%", "%$q%", "%$q%");
-        }
+        if ($q !== '') { $where[] = '(customer_email LIKE ? OR product_name LIKE ? OR comment LIKE ?)'; array_push($params, "%$q%", "%$q%", "%$q%"); }
         $whereSql = $where ? ('WHERE '.implode(' AND ', $where)) : '';
 
         $rows = DB::select("SELECT id, customer_email, order_id, product_id, rating, comment, product_name, product_image, created_at FROM reviews $whereSql ORDER BY id DESC LIMIT $limit OFFSET $offset", $params);
