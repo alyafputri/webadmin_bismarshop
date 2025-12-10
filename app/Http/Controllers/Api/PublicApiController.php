@@ -584,20 +584,49 @@ class PublicApiController extends BaseController
     public function upsertReview(Request $req)
     {
         try {
-            $b = $req->all();
-            $email = trim((string)($b['email'] ?? ''));
-            $orderId = (int)($b['orderId'] ?? 0);
-            $productId = (string)($b['productId'] ?? '');
-            $rating = (int)($b['rating'] ?? 0);
-            $comment = $b['comment'] ?? null;
+            $b           = $req->all();
+            $email       = trim((string)($b['email'] ?? ''));
+            $rawOrderId  = $b['orderId'] ?? null;
+            $orderId     = is_numeric($rawOrderId) ? (int)$rawOrderId : 0;
+            $productId   = trim((string)($b['productId'] ?? ''));
+            $rating      = (int)($b['rating'] ?? 0);
+            $comment     = $b['comment'] ?? null;
             $productName = $b['productName'] ?? null;
-            $productImage = $b['productImage'] ?? null;
-            if ($email === '' || !$orderId || $productId === '' || !$rating) return response()->json(['success'=>false,'message'=>'email, orderId, productId, rating wajib'], 400);
+            $productImage= $b['productImage'] ?? null;
+
+            // Hanya wajib email dan rating, supaya review dari aplikasi tidak mudah gagal
+            if ($email === '' || $rating <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'email dan rating wajib diisi',
+                ], 400);
+            }
+
+            // Jika productId kosong tetapi ada nama produk, gunakan nama produk sebagai pengganti ID
+            if ($productId === '' && $productName) {
+                $productId = substr(preg_replace('/\s+/', '-', strtolower((string) $productName)), 0, 64) ?: 'unknown';
+            }
+            if ($productId === '') {
+                $productId = 'unknown';
+            }
+
             DB::statement("CREATE TABLE IF NOT EXISTS reviews (id INT AUTO_INCREMENT PRIMARY KEY, customer_email VARCHAR(255) NOT NULL, order_id INT NOT NULL, product_id VARCHAR(64) NOT NULL, rating INT NOT NULL, comment TEXT NULL, product_name VARCHAR(255) NULL, product_image TEXT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NULL, UNIQUE KEY uniq_review (customer_email, order_id, product_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-            DB::statement("INSERT INTO reviews (customer_email, order_id, product_id, rating, comment, product_name, product_image, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE rating = VALUES(rating), comment = VALUES(comment), product_name = VALUES(product_name), product_image = VALUES(product_image), updated_at = CURRENT_TIMESTAMP", [$email, $orderId, $productId, $rating, $comment, $productName, $productImage]);
-            return response()->json(['success'=>true,'message'=>'Review saved']);
+
+            DB::statement(
+                "INSERT INTO reviews (customer_email, order_id, product_id, rating, comment, product_name, product_image, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                 ON DUPLICATE KEY UPDATE
+                   rating = VALUES(rating),
+                   comment = VALUES(comment),
+                   product_name = VALUES(product_name),
+                   product_image = VALUES(product_image),
+                   updated_at = CURRENT_TIMESTAMP",
+                [$email, $orderId, $productId, $rating, $comment, $productName, $productImage]
+            );
+
+            return response()->json(['success' => true, 'message' => 'Review saved']);
         } catch (\Throwable $e) {
-            return response()->json(['success'=>false,'message'=>'Failed to save review'], 500);
+            return response()->json(['success' => false, 'message' => 'Failed to save review'], 500);
         }
     }
 
