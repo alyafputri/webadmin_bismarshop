@@ -3692,10 +3692,16 @@
         modal.style.display = 'block';
         tbody.innerHTML = '<tr><td colspan="5" style="padding:10px; color:#6b7280;">Memuat...</td></tr>';
         try {
-          // Ambil semua customers (termasuk pending users) lalu filter hanya yang status 'pending'
+          // Ambil semua customers (termasuk pending users)
           const data = await apiGet('/api/admin/customers');
           const allRows = (data && data.data) ? data.data : [];
-          const rows = allRows.filter(r => String(r.status || '').toLowerCase() === 'pending');
+          // Tampilkan yang benar-benar menunggu persetujuan:
+          // - status 'pending' (user yang belum jadi customer)
+          // - atau status 'inactive' (sudah ada di tabel customers tapi belum di-approve)
+          const rows = allRows.filter(r => {
+            const s = String(r.status || '').toLowerCase();
+            return s === 'pending' || s === 'inactive';
+          });
           if (!rows.length){
             tbody.innerHTML = '<tr><td colspan="5" style="padding:10px; color:#6b7280;">Tidak ada data</td></tr>';
             return;
