@@ -8,16 +8,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 class PublicApiController extends BaseController
 {
-    private function ensureReviewsTable(): void
-    {
-        try {
-            $exists = DB::selectOne("SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'reviews'");
-            if (!$exists || (int)($exists->c ?? 0) === 0) {
-                DB::statement("CREATE TABLE reviews (id INT AUTO_INCREMENT PRIMARY KEY, customer_email VARCHAR(255) NOT NULL, order_id INT NOT NULL, product_id VARCHAR(64) NOT NULL, rating INT NOT NULL, comment TEXT NULL, product_name VARCHAR(255) NULL, product_image TEXT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NULL, UNIQUE KEY uniq_review (customer_email, order_id, product_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-            }
-        } catch (\Throwable $e) {
-        }
-    }
     private function normalizeImage(?string $p): string
     {
         if (!$p) return '';
@@ -618,9 +608,28 @@ class PublicApiController extends BaseController
             $comment = $b['comment'] ?? null;
             $productName = $b['productName'] ?? null;
             $productImage = $b['productImage'] ?? null;
-            if ($email === '' || !$orderId || $productId === '' || !$rating) return response()->json(['success'=>false,'message'=>'email, orderId, productId, rating wajib'], 400);
-            $this->ensureReviewsTable();
-            DB::statement("INSERT INTO reviews (customer_email, order_id, product_id, rating, comment, product_name, product_image, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE rating = VALUES(rating), comment = VALUES(comment), product_name = VALUES(product_name), product_image = VALUES(product_image), updated_at = CURRENT_TIMESTAMP", [$email, $orderId, $productId, $rating, $comment, $productName, $productImage]);
+
+            if ($email === '' || !$orderId || $productId === '' || !$rating) {
+                return response()->json(['success'=>false,'message'=>'email, orderId, productId, rating wajib'], 400);
+            }
+
+            // Sesuaikan dengan struktur tabel reviews di database (tanpa UNIQUE KEY)
+            DB::table('reviews')->updateOrInsert(
+                [
+                    'customer_email' => $email,
+                    'order_id'       => $orderId,
+                    'product_id'     => $productId,
+                ],
+                [
+                    'rating'        => $rating,
+                    'comment'       => $comment,
+                    'product_name'  => $productName,
+                    'product_image' => $productImage,
+                    'updated_at'    => now(),
+                    // created_at akan diisi otomatis oleh DB pada insert pertama
+                ]
+            );
+
             return response()->json(['success'=>true,'message'=>'Review saved']);
         } catch (\Throwable $e) {
             return response()->json(['success'=>false,'message'=>'Failed to save review'], 500);
@@ -632,11 +641,22 @@ class PublicApiController extends BaseController
         try {
             $email = trim((string)$req->query('email', ''));
             $orderId = $req->query('orderId');
-            if ($email === '') return response()->json(['success'=>false,'message'=>'email diperlukan'], 400);
-            $this->ensureReviewsTable();
-            $where = ['customer_email = ?']; $params = [$email];
-            if ($orderId) { $where[] = 'order_id = ?'; $params[] = (int)$orderId; }
-            $rows = DB::select("SELECT id, customer_email, order_id, product_id, rating, comment, product_name, product_image, created_at FROM reviews WHERE ".implode(' AND ', $where)." ORDER BY id DESC LIMIT 500", $params);
+            if ($email === '') {
+                return response()->json(['success'=>false,'message'=>'email diperlukan'], 400);
+            }
+
+            $query = DB::table('reviews')
+                ->select('id', 'customer_email', 'order_id', 'product_id', 'rating', 'comment', 'product_name', 'product_image', 'created_at')
+                ->where('customer_email', $email)
+                ->orderByDesc('id')
+                ->limit(500);
+
+            if ($orderId) {
+                $query->where('order_id', (int)$orderId);
+            }
+
+            $rows = $query->get();
+
             return response()->json(['success'=>true,'data'=>$rows]);
         } catch (\Throwable $e) {
             return response()->json(['success'=>false,'message'=>'Failed to list reviews'], 500);
