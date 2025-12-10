@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CustomerController extends BaseController
 {
@@ -19,24 +20,48 @@ class CustomerController extends BaseController
         try {
             // ============================
             // 1. Data customer yang sudah approve / terdaftar
-            //    Sertakan agregasi jumlah order dan total belanja
+            //    Sertakan agregasi jumlah order & total belanja JIKA tabel/kolom tersedia
             // ============================
-            $query = DB::table('customers as c')
-                ->leftJoin('orders as o', 'o.customer_email', '=', 'c.email')
-                ->select(
-                    'c.id',
-                    'c.name',
-                    'c.email',
-                    'c.phone',
-                    'c.address',
-                    'c.status',
-                    'c.created_at',
-                    'c.updated_at',
-                    DB::raw('COUNT(o.id) as total_orders'),
-                    DB::raw('COALESCE(SUM(o.total_amount),0) as total_spent')
-                )
-                ->groupBy('c.id', 'c.name', 'c.email', 'c.phone', 'c.address', 'c.status', 'c.created_at', 'c.updated_at')
-                ->orderBy('c.id', 'DESC');
+
+            $hasOrdersTable = Schema::hasTable('orders');
+            $hasOrderEmail  = $hasOrdersTable && Schema::hasColumn('orders', 'customer_email');
+            $hasOrderTotal  = $hasOrdersTable && Schema::hasColumn('orders', 'total_amount');
+
+            if ($hasOrderEmail && $hasOrderTotal) {
+                // Versi lengkap dengan agregasi
+                $query = DB::table('customers as c')
+                    ->leftJoin('orders as o', 'o.customer_email', '=', 'c.email')
+                    ->select(
+                        'c.id',
+                        'c.name',
+                        'c.email',
+                        'c.phone',
+                        'c.address',
+                        'c.status',
+                        'c.created_at',
+                        'c.updated_at',
+                        DB::raw('COUNT(o.id) as total_orders'),
+                        DB::raw('COALESCE(SUM(o.total_amount),0) as total_spent')
+                    )
+                    ->groupBy('c.id', 'c.name', 'c.email', 'c.phone', 'c.address', 'c.status', 'c.created_at', 'c.updated_at')
+                    ->orderBy('c.id', 'DESC');
+            } else {
+                // Fallback: tidak ada tabel/kolom orders yang dibutuhkan
+                $query = DB::table('customers as c')
+                    ->select(
+                        'c.id',
+                        'c.name',
+                        'c.email',
+                        'c.phone',
+                        'c.address',
+                        'c.status',
+                        'c.created_at',
+                        'c.updated_at',
+                        DB::raw('0 as total_orders'),
+                        DB::raw('0 as total_spent')
+                    )
+                    ->orderBy('c.id', 'DESC');
+            }
 
             if ($status) {
                 $query->where('status', $status);
@@ -71,7 +96,8 @@ class CustomerController extends BaseController
                     'u.id as id',
                     'u.name',
                     'u.email',
-                    'u.phone',
+                    // Jika kolom phone belum ada di tabel users, gunakan NULL agar tidak error
+                    DB::raw(Schema::hasColumn('users', 'phone') ? 'u.phone' : 'NULL as phone'),
                     DB::raw('NULL as address'),
                     DB::raw("'pending' as status"),
                     'u.created_at',
@@ -275,15 +301,27 @@ class CustomerController extends BaseController
             }
 
             // Buat user login (is_active = 0 agar pending)
-            DB::insert("
-                INSERT INTO users (name, email, password, phone, role_id, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 0, 0, NOW(), NOW())
-            ", [
-                $data['name'],
-                $data['email'],
-                password_hash($data['password'], PASSWORD_BCRYPT),
-                $data['phone'] ?? null,
-            ]);
+            // Jika kolom phone belum ada di tabel users, jangan pakai kolom tersebut agar tidak error.
+            if (Schema::hasColumn('users', 'phone')) {
+                DB::insert("
+                    INSERT INTO users (name, email, password, phone, role_id, is_active, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, 0, 0, NOW(), NOW())
+                ", [
+                    $data['name'],
+                    $data['email'],
+                    password_hash($data['password'], PASSWORD_BCRYPT),
+                    $data['phone'] ?? null,
+                ]);
+            } else {
+                DB::insert("
+                    INSERT INTO users (name, email, password, role_id, is_active, created_at, updated_at)
+                    VALUES (?, ?, ?, 0, 0, NOW(), NOW())
+                ", [
+                    $data['name'],
+                    $data['email'],
+                    password_hash($data['password'], PASSWORD_BCRYPT),
+                ]);
+            }
 
             return response()->json([
                 'success' => true,
