@@ -3695,14 +3695,11 @@
           // Ambil semua customers (termasuk pending users)
           const data = await apiGet('/api/admin/customers');
           const allRows = (data && data.data) ? data.data : [];
-          // Tampilkan yang benar-benar menunggu persetujuan:
-          // Semua yang status-nya BUKAN 'active' dan BUKAN 'banned'
-          // (misal: 'pending', 'inactive', atau status lain yang belum disetujui)
-          const rows = allRows.filter(r => {
-            const s = String(r.status || '').toLowerCase().trim();
-            if (!s) return true; // jika kosong, anggap pending
-            return s !== 'active' && s !== 'banned';
-          });
+          // Untuk memastikan tidak ada yang terlewat, tampilkan semua baris
+          // seperti pada tabel Customers utama. Status (Pending/Inactive/Active)
+          // tetap terlihat di kolom Status sehingga admin bisa melihat mana
+          // yang belum disetujui sebelum menekan Approve.
+          const rows = allRows;
           if (!rows.length){
             tbody.innerHTML = '<tr><td colspan="5" style="padding:10px; color:#6b7280;">Tidak ada data</td></tr>';
             return;
