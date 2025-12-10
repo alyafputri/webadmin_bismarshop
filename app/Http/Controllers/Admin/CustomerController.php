@@ -184,13 +184,14 @@ class CustomerController extends BaseController
         try {
             $customerId = (int) $id;
 
-            // 1. Update existing customer
+            // 1. Coba update di tabel customers terlebih dahulu
             $affected = DB::update(
                 'UPDATE customers SET status = ? WHERE id = ?',
                 [$status, $customerId]
             );
 
             if ($affected > 0) {
+                // Sinkronkan ke tabel users.is_active berdasarkan email customer
                 try {
                     $cust = DB::selectOne(
                         'SELECT email FROM customers WHERE id = ? LIMIT 1',
@@ -203,7 +204,7 @@ class CustomerController extends BaseController
                         );
                     }
                 } catch (\Throwable $e) {
-                    // ignore sync error
+                    // Abaikan error sinkronisasi, tidak menggagalkan update utama
                 }
 
                 return response()->json([
@@ -216,14 +217,16 @@ class CustomerController extends BaseController
                 ]);
             }
 
-            // 2. Jika belum customer → jadikan customer baru
+            // 2. Jika belum ada di customers → anggap ID merujuk ke users.id dan buat customer baru
             $userId = (int) $id;
 
-            // Ambil juga role_id untuk bedakan admin/staff
-            $user = DB::selectOne(
-                'SELECT id, name, email, phone, role_id FROM users WHERE id = ? LIMIT 1',
-                [$userId]
-            );
+            // Ambil juga role_id untuk bedakan admin/staff.
+            // Jika kolom phone belum ada di tabel users, gunakan NULL agar tidak error.
+            $userSelectSql = Schema::hasColumn('users', 'phone')
+                ? 'SELECT id, name, email, phone, role_id FROM users WHERE id = ? LIMIT 1'
+                : 'SELECT id, name, email, NULL as phone, role_id FROM users WHERE id = ? LIMIT 1';
+
+            $user = DB::selectOne($userSelectSql, [$userId]);
 
             if (!$user || !$user->email) {
                 return response()->json([

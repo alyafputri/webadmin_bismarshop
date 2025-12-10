@@ -3692,8 +3692,10 @@
         modal.style.display = 'block';
         tbody.innerHTML = '<tr><td colspan="5" style="padding:10px; color:#6b7280;">Memuat...</td></tr>';
         try {
-          const data = await apiGet('/api/admin/customers?status=inactive');
-          const rows = (data && data.data) ? data.data : [];
+          // Ambil semua customers (termasuk pending users) lalu filter hanya yang status 'pending'
+          const data = await apiGet('/api/admin/customers');
+          const allRows = (data && data.data) ? data.data : [];
+          const rows = allRows.filter(r => String(r.status || '').toLowerCase() === 'pending');
           if (!rows.length){
             tbody.innerHTML = '<tr><td colspan="5" style="padding:10px; color:#6b7280;">Tidak ada data</td></tr>';
             return;
