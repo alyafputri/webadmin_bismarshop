@@ -64,6 +64,8 @@ window.updateCustomerStatus = async function updateCustomerStatus(id, newStatus,
                 badge.textContent = newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
                 badge.className = `badge bg-${newStatus==='active'?'success':newStatus==='banned'?'danger':newStatus==='pending'?'warning':'secondary'} text-uppercase ms-1`;
             }
+            // Refresh daftar customers agar tampilan selalu terbaru
+            try { await loadCustomers(); } catch(_) {}
         } else {
             showNotification('Gagal update status pelanggan', 'error');
             if (el && prev) el.value = prev;

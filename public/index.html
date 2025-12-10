@@ -3702,7 +3702,9 @@
                 // Gunakan PATCH seperti updateCustomerStatus() di script.js
                 const res = await apiCall(`/api/admin/customers/${id}/status`, 'PATCH', { status: 'active' });
                 await refreshPendingCount();
-                await openModal(); // reload list
+                // Segarkan juga tabel utama Customers agar langsung menampilkan perubahan
+                try { await loadCustomers(); } catch(e) { console.warn('loadCustomers not available', e); }
+                await openModal(); // reload list pending
               } catch (e) {
                 ev.currentTarget.disabled = false;
                 ev.currentTarget.textContent = 'Approve';
