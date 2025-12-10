@@ -69,36 +69,6 @@ class AuthController extends BaseController
 
         $id = DB::table('users')->insertGetId($userData);
 
-        // Opsional: tampilkan di tabel customers sebagai inactive
-        try {
-            if (DB::getSchemaBuilder()->hasTable('customers')) {
-                $customerData = [
-                    'name'       => $name,
-                    'status'     => 'inactive',
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ];
-                if (Schema::hasColumn('customers', 'phone')) {
-                    $customerData['phone'] = $phone !== '' ? $phone : null;
-                }
-                // Kolom tambahan seperti total_orders / total_spent hanya diisi jika ada
-                if (Schema::hasColumn('customers', 'total_orders')) {
-                    $customerData['total_orders'] = DB::raw('COALESCE(total_orders,0)');
-                }
-                if (Schema::hasColumn('customers', 'total_spent')) {
-                    $customerData['total_spent'] = DB::raw('COALESCE(total_spent,0)');
-                }
-                if (Schema::hasColumn('customers', 'joined_date')) {
-                    $customerData['joined_date'] = now();
-                }
-
-                DB::table('customers')->updateOrInsert(
-                    ['email' => $email],
-                    $customerData
-                );
-            }
-        } catch (\Throwable $e) {}
-
         return response()->json([
             'success'  => true,
             'message'  => 'Registrasi berhasil. Akun menunggu persetujuan admin.',
