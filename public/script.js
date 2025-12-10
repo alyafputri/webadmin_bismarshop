@@ -2540,6 +2540,20 @@ function updateProductsTable() {
         tbody.appendChild(row);
     });
     console.log('[Products] rows appended:', tbody.children.length);
+
+    // Safety: hapus ikon mata dan tombol "View/Lihat" khusus di section Products
+    try {
+        const productsSection = document.getElementById('products');
+        if (productsSection) {
+            productsSection.querySelectorAll('.fa-eye').forEach(el => el.remove());
+            productsSection.querySelectorAll('button, a').forEach(el => {
+                const txt = (el.textContent || '').trim().toLowerCase();
+                if (txt === 'view' || txt === 'lihat') {
+                    el.remove();
+                }
+            });
+        }
+    } catch (_) {}
 }
 
 // Global variables for product management
