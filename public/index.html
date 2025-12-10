@@ -3644,38 +3644,10 @@
       const closeBtn = document.getElementById('closePendingCustomersBtn');
       const tbody = document.getElementById('pendingCustomersTbody');
 
-      function getToken(){
-        try {
-          return (
-            localStorage.getItem('auth_token') ||
-            localStorage.getItem('authToken') ||
-            localStorage.getItem('token') ||
-            localStorage.getItem('adminToken') ||
-            sessionStorage.getItem('auth_token') ||
-            sessionStorage.getItem('adminToken')
-          );
-        } catch (e) { return null; }
-      }
-
-      async function apiGet(path){
-        const token = getToken();
-        const res = await fetch(path, { headers: { 'Authorization': token ? 'Bearer ' + token : '' }});
-        return res.json();
-      }
-
-      async function apiPut(path, body){
-        const token = getToken();
-        const res = await fetch(path, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'Authorization': token ? 'Bearer ' + token : '' },
-          body: JSON.stringify(body || {})
-        });
-        return res.json();
-      }
-
       async function refreshPendingCount(){
         try {
-          const data = await apiGet('/api/customers/pending/count');
+          // Gunakan apiCall global supaya konsisten dengan pemanggilan API lain
+          const data = await apiCall('/api/customers/pending/count', 'GET');
           const count = data && data.count ? Number(data.count) : 0;
           if (count > 0){
             text.textContent = `Ada ${count} pelanggan menunggu persetujuan`;
@@ -3692,9 +3664,15 @@
         modal.style.display = 'block';
         tbody.innerHTML = '<tr><td colspan="5" style="padding:10px; color:#6b7280;">Memuat...</td></tr>';
         try {
-          // Ambil semua customers (termasuk pending users)
-          const data = await apiGet('/api/admin/customers');
-          const allRows = (data && data.data) ? data.data : [];
+          // Ambil semua customers (termasuk pending users) dengan apiCall yang sama
+          // seperti loadCustomers() di script.js, supaya struktur datanya identik.
+          const resp = await apiCall('/api/admin/customers', 'GET');
+          let allRows = [];
+          if (Array.isArray(resp)) {
+            allRows = resp;
+          } else if (Array.isArray(resp?.data)) {
+            allRows = resp.data;
+          }
           // Untuk memastikan tidak ada yang terlewat, tampilkan semua baris
           // seperti pada tabel Customers utama. Status (Pending/Inactive/Active)
           // tetap terlihat di kolom Status sehingga admin bisa melihat mana
@@ -3721,7 +3699,8 @@
               ev.currentTarget.disabled = true;
               ev.currentTarget.textContent = 'Processing...';
               try {
-                const res = await apiPut(`/api/admin/customers/${id}/status`, { status: 'active' });
+                // Gunakan PATCH seperti updateCustomerStatus() di script.js
+                const res = await apiCall(`/api/admin/customers/${id}/status`, 'PATCH', { status: 'active' });
                 await refreshPendingCount();
                 await openModal(); // reload list
               } catch (e) {
