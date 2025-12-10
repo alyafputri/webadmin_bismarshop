@@ -303,28 +303,61 @@ class CustomerController extends BaseController
                 ], 409);
             }
 
+            // Pastikan kolom opsional di tabel users ada
+            try {
+                if (!Schema::hasColumn('users', 'role_id')) {
+                    DB::statement("ALTER TABLE users ADD COLUMN role_id INT NULL");
+                }
+            } catch (\Throwable $e) {}
+            try {
+                if (!Schema::hasColumn('users', 'is_active')) {
+                    DB::statement("ALTER TABLE users ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 0");
+                }
+            } catch (\Throwable $e) {}
+            try {
+                if (!Schema::hasColumn('users', 'phone')) {
+                    DB::statement("ALTER TABLE users ADD COLUMN phone VARCHAR(50) NULL");
+                }
+            } catch (\Throwable $e) {}
+
             // Buat user login (is_active = 0 agar pending)
-            // Jika kolom phone belum ada di tabel users, jangan pakai kolom tersebut agar tidak error.
+            $userData = [
+                'name'       => $data['name'],
+                'email'      => $data['email'],
+                'password'   => password_hash($data['password'], PASSWORD_BCRYPT),
+                'role_id'    => 0,
+                'is_active'  => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
             if (Schema::hasColumn('users', 'phone')) {
-                DB::insert("
-                    INSERT INTO users (name, email, password, phone, role_id, is_active, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, 0, 0, NOW(), NOW())
-                ", [
-                    $data['name'],
-                    $data['email'],
-                    password_hash($data['password'], PASSWORD_BCRYPT),
-                    $data['phone'] ?? null,
-                ]);
-            } else {
-                DB::insert("
-                    INSERT INTO users (name, email, password, role_id, is_active, created_at, updated_at)
-                    VALUES (?, ?, ?, 0, 0, NOW(), NOW())
-                ", [
-                    $data['name'],
-                    $data['email'],
-                    password_hash($data['password'], PASSWORD_BCRYPT),
-                ]);
+                $userData['phone'] = $data['phone'] ?? null;
             }
+
+            DB::table('users')->insert($userData);
+
+            // Opsional: catat juga di tabel customers sebagai inactive supaya langsung muncul di admin
+            try {
+                if (Schema::hasTable('customers')) {
+                    $custData = [
+                        'name'       => $data['name'],
+                        'status'     => 'inactive',
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                    if (Schema::hasColumn('customers', 'phone')) {
+                        $custData['phone'] = $data['phone'] ?? null;
+                    }
+                    if (Schema::hasColumn('customers', 'address')) {
+                        $custData['address'] = $data['address'] ?? null;
+                    }
+
+                    DB::table('customers')->updateOrInsert(
+                        ['email' => $data['email']],
+                        $custData
+                    );
+                }
+            } catch (\Throwable $e) {}
 
             return response()->json([
                 'success' => true,

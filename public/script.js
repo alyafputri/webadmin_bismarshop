@@ -361,8 +361,19 @@ function renderOrders() {
         const sample = (allOrdersCache || []).slice(0, 5).map(x => normalizeOrderStatus(x.status || x.order_status));
         console.debug('[Orders] selected =', status || '(all)', 'total=', allOrdersCache.length, 'shown=', rows.length, 'sample statuses=', sample);
     } catch(_){ }
-    // Safety: Remove any leftover "view" eye icons that may persist in the Orders section
-    try { document.querySelectorAll('#orders .fa-eye').forEach(el => el.remove()); } catch(_) {}
+    // Safety: hapus ikon dan tombol "View" khusus di section Orders
+    try {
+        const ordersSection = document.getElementById('orders');
+        if (ordersSection) {
+            ordersSection.querySelectorAll('.fa-eye').forEach(el => el.remove());
+            ordersSection.querySelectorAll('button, a').forEach(el => {
+                const txt = (el.textContent || '').trim().toLowerCase();
+                if (txt === 'view' || txt === 'lihat') {
+                    el.remove();
+                }
+            });
+        }
+    } catch(_) {}
 }
 
 function renderOrderRow(o) {
