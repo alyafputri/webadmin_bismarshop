@@ -350,6 +350,7 @@ class PublicApiController extends BaseController
         $trackingNumber  = $b['trackingNumber']  ?? null;
         $totalAmount     = $b['totalAmount']     ?? null;
         $items           = $b['items']           ?? [];
+        $appliedVouchers = $b['appliedVouchers'] ?? [];
 
         if (!$customerEmail || !is_array($items) || count($items) === 0) {
             return response()->json([
@@ -408,6 +409,111 @@ class PublicApiController extends BaseController
                 'success' => false,
                 'message' => 'Silakan login terlebih dahulu sebelum checkout',
             ], 401);
+        }
+
+        // ============================================================
+        // VALIDASI VOUCHER (BERDASARKAN DATA ADMIN)
+        // ============================================================
+        try {
+            $subtotal = 0;
+            $productIds = [];
+            foreach ($items as $it) {
+                $qty = (int)($it['quantity'] ?? 1);
+                $price = (float)($it['price'] ?? 0);
+                $subtotal += $qty * $price;
+                if (!empty($it['productId'])) {
+                    $productIds[] = (int)$it['productId'];
+                }
+            }
+            $productIds = array_values(array_unique(array_filter($productIds)));
+
+            if (is_array($appliedVouchers) && count($appliedVouchers) > 0) {
+                foreach ($appliedVouchers as $v) {
+                    if (!is_array($v)) continue;
+                    $vid = isset($v['id']) ? (int)$v['id'] : 0;
+                    $catRaw = strtolower(trim((string)($v['category'] ?? '')));
+                    if (!$vid || $catRaw === '') {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Voucher tidak valid',
+                        ], 400);
+                    }
+                    $category = $catRaw;
+
+                    if (in_array($category, ['shopping', 'belanja'])) {
+                        // General shopping vouchers from vouchers table
+                        $row = DB::selectOne("SELECT id, code, name, type, value, min_purchase, max_discount, start_date, end_date, is_active FROM vouchers WHERE id = ? LIMIT 1", [$vid]);
+                        if (!$row || !(int)$row->is_active) {
+                            return response()->json(['success'=>false,'message'=>'Voucher belanja tidak aktif atau tidak ditemukan'], 400);
+                        }
+                        $now = now();
+                        if ($row->start_date && $now < $row->start_date) {
+                            return response()->json(['success'=>false,'message'=>'Voucher belanja belum berlaku'], 400);
+                        }
+                        if ($row->end_date && $now > $row->end_date) {
+                            return response()->json(['success'=>false,'message'=>'Voucher belanja sudah kadaluarsa'], 400);
+                        }
+                        if ($subtotal < (float)($row->min_purchase ?? 0)) {
+                            return response()->json(['success'=>false,'message'=>'Belanja belum mencapai minimum untuk voucher belanja'], 400);
+                        }
+                    } elseif (in_array($category, ['product', 'produk'])) {
+                        // Product/category specific vouchers from product_vouchers
+                        $row = DB::selectOne("SELECT id, type, value, max_discount, start_date, end_date, is_active, target_type, target_id FROM product_vouchers WHERE id = ? LIMIT 1", [$vid]);
+                        if (!$row || !(int)$row->is_active) {
+                            return response()->json(['success'=>false,'message'=>'Voucher produk tidak aktif atau tidak ditemukan'], 400);
+                        }
+                        $now = now();
+                        if ($row->start_date && $now < $row->start_date) {
+                            return response()->json(['success'=>false,'message'=>'Voucher produk belum berlaku'], 400);
+                        }
+                        if ($row->end_date && $now > $row->end_date) {
+                            return response()->json(['success'=>false,'message'=>'Voucher produk sudah kadaluarsa'], 400);
+                        }
+                        // Jika voucher tertarget ke produk tertentu, pastikan ada di keranjang
+                        if ($row->target_type === 'product' && $row->target_id && $productIds) {
+                            $targetId = (int)$row->target_id;
+                            if (!in_array($targetId, $productIds, true)) {
+                                return response()->json(['success'=>false,'message'=>'Voucher produk hanya berlaku untuk produk tertentu'], 400);
+                            }
+                        }
+                        // Jika target_type category, validasi kategori bisa ditambah jika diperlukan
+                    } elseif (in_array($category, ['flashsale', 'flash_sale', 'flashsalev2'])) {
+                        // Flash sale: cukup validasi periode dan is_active
+                        $row = DB::selectOne("SELECT id, start_date, end_date, is_active FROM flash_sales WHERE id = ? LIMIT 1", [$vid]);
+                        if (!$row || !(int)$row->is_active) {
+                            return response()->json(['success'=>false,'message'=>'Flash sale tidak aktif atau tidak ditemukan'], 400);
+                        }
+                        $now = now();
+                        if ($row->start_date && $now < $row->start_date) {
+                            return response()->json(['success'=>false,'message'=>'Flash sale belum dimulai'], 400);
+                        }
+                        if ($row->end_date && $now > $row->end_date) {
+                            return response()->json(['success'=>false,'message'=>'Flash sale telah berakhir'], 400);
+                        }
+                    } elseif (in_array($category, ['freeshipping', 'free_shipping', 'gratisongkir', 'gratis_ongkir'])) {
+                        // Free shipping promotions
+                        $row = DB::selectOne("SELECT id, min_amount, max_discount, start_date, end_date, is_active FROM free_shipping_promotions WHERE id = ? LIMIT 1", [$vid]);
+                        if (!$row || !(int)$row->is_active) {
+                            return response()->json(['success'=>false,'message'=>'Promo gratis ongkir tidak aktif atau tidak ditemukan'], 400);
+                        }
+                        $now = now();
+                        if ($row->start_date && $now < $row->start_date) {
+                            return response()->json(['success'=>false,'message'=>'Promo gratis ongkir belum berlaku'], 400);
+                        }
+                        if ($row->end_date && $now > $row->end_date) {
+                            return response()->json(['success'=>false,'message'=>'Promo gratis ongkir sudah kadaluarsa'], 400);
+                        }
+                        if ($subtotal < (float)($row->min_amount ?? 0)) {
+                            return response()->json(['success'=>false,'message'=>'Belanja belum mencapai minimum untuk gratis ongkir'], 400);
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memvalidasi voucher: '.$e->getMessage(),
+            ], 400);
         }
 
         // ============================================================
