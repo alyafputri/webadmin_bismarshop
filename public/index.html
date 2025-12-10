@@ -3699,7 +3699,7 @@
           // - status 'pending' (user yang belum jadi customer)
           // - atau status 'inactive' (sudah ada di tabel customers tapi belum di-approve)
           const rows = allRows.filter(r => {
-            const s = String(r.status || '').toLowerCase();
+            const s = String(r.status || '').toLowerCase().trim();
             return s === 'pending' || s === 'inactive';
           });
           if (!rows.length){
