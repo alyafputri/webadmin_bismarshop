@@ -4,7 +4,7 @@ async function loadCustomers() {
     if (!tbody) return;
     tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><div class="mt-2">Loading customers...</div></td></tr>`;
     try {
-        const resp = await apiCall('/api/customers', 'GET');
+        const resp = await apiCall('/api/admin/customers', 'GET');
         if (!resp || !resp.success) {
             tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">Gagal memuat data pelanggan</td></tr>`;
             return;
@@ -31,7 +31,7 @@ function renderCustomerRow(c) {
     const status = c.status || '-';
     const joined = c.created_at ? formatDate(c.created_at) : '-';
     // Status dropdown for admin update
-    const statusOptions = ['active','pending','banned'].map(s => `<option value="${s}" ${String(status).toLowerCase()===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
+    const statusOptions = ['active','inactive','banned'].map(s => `<option value="${s}" ${String(status).toLowerCase()===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
     return `
         <tr>
             <td>${escapeHtml(name)}</td>
@@ -55,7 +55,7 @@ window.updateCustomerStatus = async function updateCustomerStatus(id, newStatus,
     const prev = el ? el.value : null;
     el && (el.disabled = true);
     try {
-        const resp = await apiCall(`/api/customers/${id}/status`, 'PATCH', { status: newStatus });
+        const resp = await apiCall(`/api/admin/customers/${id}/status`, 'PATCH', { status: newStatus });
         if (resp && resp.success) {
             showNotification('Status pelanggan berhasil diupdate', 'success');
             // Optionally update badge text

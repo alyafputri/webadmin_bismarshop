@@ -19,8 +19,24 @@ class CustomerController extends BaseController
         try {
             // ============================
             // 1. Data customer yang sudah approve / terdaftar
+            //    Sertakan agregasi jumlah order dan total belanja
             // ============================
-            $query = DB::table('customers')->orderBy('id', 'DESC');
+            $query = DB::table('customers as c')
+                ->leftJoin('orders as o', 'o.customer_email', '=', 'c.email')
+                ->select(
+                    'c.id',
+                    'c.name',
+                    'c.email',
+                    'c.phone',
+                    'c.address',
+                    'c.status',
+                    'c.created_at',
+                    'c.updated_at',
+                    DB::raw('COUNT(o.id) as total_orders'),
+                    DB::raw('COALESCE(SUM(o.total_amount),0) as total_spent')
+                )
+                ->groupBy('c.id', 'c.name', 'c.email', 'c.phone', 'c.address', 'c.status', 'c.created_at', 'c.updated_at')
+                ->orderBy('c.id', 'DESC');
 
             if ($status) {
                 $query->where('status', $status);
@@ -28,8 +44,8 @@ class CustomerController extends BaseController
 
             if ($q) {
                 $query->where(function ($w) use ($q) {
-                    $w->where('name', 'like', "%$q%")
-                      ->orWhere('email', 'like', "%$q%");
+                    $w->where('c.name', 'like', "%$q%")
+                      ->orWhere('c.email', 'like', "%$q%");
                 });
             }
 
@@ -55,11 +71,13 @@ class CustomerController extends BaseController
                     'u.id as id',
                     'u.name',
                     'u.email',
-                    DB::raw('NULL as phone'),
+                    'u.phone',
                     DB::raw('NULL as address'),
                     DB::raw("'pending' as status"),
                     'u.created_at',
-                    'u.updated_at'
+                    'u.updated_at',
+                    DB::raw('0 as total_orders'),
+                    DB::raw('0 as total_spent')
                 );
 
             if ($q) {
@@ -258,12 +276,13 @@ class CustomerController extends BaseController
 
             // Buat user login (is_active = 0 agar pending)
             DB::insert("
-                INSERT INTO users (name, email, password, role_id, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, 0, 0, NOW(), NOW())
+                INSERT INTO users (name, email, password, phone, role_id, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 0, 0, NOW(), NOW())
             ", [
                 $data['name'],
                 $data['email'],
                 password_hash($data['password'], PASSWORD_BCRYPT),
+                $data['phone'] ?? null,
             ]);
 
             return response()->json([

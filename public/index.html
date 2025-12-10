@@ -3692,7 +3692,7 @@
         modal.style.display = 'block';
         tbody.innerHTML = '<tr><td colspan="5" style="padding:10px; color:#6b7280;">Memuat...</td></tr>';
         try {
-          const data = await apiGet('/api/customers?status=inactive');
+          const data = await apiGet('/api/admin/customers?status=inactive');
           const rows = (data && data.data) ? data.data : [];
           if (!rows.length){
             tbody.innerHTML = '<tr><td colspan="5" style="padding:10px; color:#6b7280;">Tidak ada data</td></tr>';
@@ -3715,7 +3715,7 @@
               ev.currentTarget.disabled = true;
               ev.currentTarget.textContent = 'Processing...';
               try {
-                const res = await apiPut(`/api/customers/${id}/status`, { status: 'active' });
+                const res = await apiPut(`/api/admin/customers/${id}/status`, { status: 'active' });
                 await refreshPendingCount();
                 await openModal(); // reload list
               } catch (e) {
