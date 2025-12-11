@@ -351,6 +351,7 @@ class PublicApiController extends BaseController
         $totalAmount     = $b['totalAmount']     ?? null;
         $items           = $b['items']           ?? [];
         $appliedVouchers = $b['appliedVouchers'] ?? [];
+        $paymentMethod   = $b['paymentMethod']   ?? $b['payment_method'] ?? null; // e.g. 'bank_transfer', 'cash', etc.
 
         if (!$customerEmail || !is_array($items) || count($items) === 0) {
             return response()->json([
@@ -524,20 +525,60 @@ class PublicApiController extends BaseController
         try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_address VARCHAR(255) NULL"); } catch (\Throwable $e) {}
         try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number VARCHAR(100) NULL"); } catch (\Throwable $e) {}
         try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL"); } catch (\Throwable $e) {}
+        // Payment-related columns for bank transfer flow with unique amount
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50) NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS amount_to_pay INT NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS bank_name VARCHAR(100) NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS bank_account_number VARCHAR(100) NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS bank_account_name VARCHAR(150) NULL"); } catch (\Throwable $e) {}
         try { DB::statement("ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_image VARCHAR(1024) NULL"); } catch (\Throwable $e) {}
         
         try {
             DB::beginTransaction();
+            // Base amount (after voucher etc.)
+            $baseTotal = (int) round((float) ($totalAmount ?? 0));
+
+            // Generate unique amount for bank transfer so admin can easily match
+            $amountToPay = $baseTotal;
+            $bankName = null;
+            $bankAccountNumber = null;
+            $bankAccountName = null;
+            $paymentStatus = null;
+
+            if ($paymentMethod && strtolower((string)$paymentMethod) === 'bank_transfer') {
+                // Simple 2-3 digit unique code using order count modulo; still deterministic enough
+                try {
+                    $cntRow = DB::selectOne("SELECT COALESCE(MAX(id),0) AS max_id FROM orders");
+                    $code = ((int)($cntRow->max_id ?? 0) + 1) % 1000; // 0..999
+                    if ($code < 1) $code = rand(1, 999);
+                    $amountToPay = $baseTotal + $code;
+                } catch (\Throwable $e) {
+                    $amountToPay = $baseTotal;
+                }
+
+                // Static company bank account (can be moved to config/.env later)
+                $bankName = 'Transfer Bank';
+                $bankAccountNumber = env('COMPANY_BANK_ACCOUNT', '1234567890');
+                $bankAccountName = env('COMPANY_BANK_NAME', 'PT Indo Bismar');
+                $paymentStatus = 'pending_payment';
+            }
 
             $id = DB::table('orders')->insertGetId([
-                'customer_id'      => null,
-                'customer_name'    => $customerName ?: explode('@', (string) $customerEmail)[0],
-                'customer_email'   => $customerEmail,
-                'shipping_address' => $shippingAddress,
-                'tracking_number'  => $trackingNumber,
-                'status'           => 'pending',
-                'total_amount'     => (int) round((float) ($totalAmount ?? 0)),
-                'created_at'       => now(),
+                'customer_id'        => null,
+                'customer_name'      => $customerName ?: explode('@', (string) $customerEmail)[0],
+                'customer_email'     => $customerEmail,
+                'shipping_address'   => $shippingAddress,
+                'tracking_number'    => $trackingNumber,
+                'status'             => 'pending',
+                'total_amount'       => $baseTotal,
+                'payment_method'     => $paymentMethod,
+                'payment_status'     => $paymentStatus,
+                'amount_to_pay'      => $amountToPay,
+                'bank_name'          => $bankName,
+                'bank_account_number'=> $bankAccountNumber,
+                'bank_account_name'  => $bankAccountName,
+                'created_at'         => now(),
             ]);
 
             foreach ($items as $it) {
@@ -599,7 +640,20 @@ class PublicApiController extends BaseController
 
             DB::commit();
 
-            return response()->json(['success' => true, 'id' => $id]);
+            // Return extra payment info so frontend can show pending payment page
+            return response()->json([
+                'success' => true,
+                'id' => $id,
+                'payment' => [
+                    'method' => $paymentMethod,
+                    'status' => $paymentStatus,
+                    'amount' => $baseTotal,
+                    'amountToPay' => $amountToPay,
+                    'bankName' => $bankName,
+                    'bankAccountNumber' => $bankAccountNumber,
+                    'bankAccountName' => $bankAccountName,
+                ],
+            ]);
         } catch (\Throwable $e) {
             DB::rollBack();
             \Log::error('Order Creation Error', [
@@ -621,10 +675,10 @@ class PublicApiController extends BaseController
             $name = trim((string)$req->query('name', ''));
             $rows = [];
             if ($email !== '') {
-                $rows = DB::select("SELECT id, customer_name, customer_email, shipping_address, tracking_number, status, total_amount, created_at FROM orders WHERE customer_email = ? ORDER BY id DESC LIMIT 200", [$email]);
+                $rows = DB::select("SELECT id, customer_name, customer_email, shipping_address, tracking_number, status, total_amount, created_at, payment_method, payment_status, amount_to_pay, bank_name, bank_account_number, bank_account_name FROM orders WHERE customer_email = ? ORDER BY id DESC LIMIT 200", [$email]);
             }
             if ((!$email || count($rows) === 0) && $name !== '') {
-                $rows = DB::select("SELECT id, customer_name, customer_email, shipping_address, tracking_number, status, total_amount, created_at FROM orders WHERE customer_name = ? ORDER BY id DESC LIMIT 200", [$name]);
+                $rows = DB::select("SELECT id, customer_name, customer_email, shipping_address, tracking_number, status, total_amount, created_at, payment_method, payment_status, amount_to_pay, bank_name, bank_account_number, bank_account_name FROM orders WHERE customer_name = ? ORDER BY id DESC LIMIT 200", [$name]);
             }
             if (!$rows) return response()->json(['success'=>true,'data'=>[]]);
             $ids = array_map(fn($r)=>$r->id, $rows);
@@ -643,6 +697,12 @@ class PublicApiController extends BaseController
                     'status'=>$o->status,
                     'total_amount'=>$o->total_amount,
                     'created_at'=>$o->created_at,
+                    'payment_method'=>$o->payment_method ?? null,
+                    'payment_status'=>$o->payment_status ?? null,
+                    'amount_to_pay'=>$o->amount_to_pay ?? null,
+                    'bank_name'=>$o->bank_name ?? null,
+                    'bank_account_number'=>$o->bank_account_number ?? null,
+                    'bank_account_name'=>$o->bank_account_name ?? null,
                     'items'=> array_map(fn($i)=>[
                         'product_id'=>$i->product_id,
                         'product_name'=>$i->product_name,
