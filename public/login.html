@@ -9,22 +9,41 @@
     <link rel="stylesheet" href="styles.css">
     <style>
         body {
-            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+            /* Gradiasi merah-oranye dengan animasi lembut */
+            background: radial-gradient(circle at top left, #f97316 0%, #dc2626 30%, #b91c1c 60%, #7f1d1d 100%);
+            background-size: 200% 200%;
+            animation: loginBgPulse 14s ease-in-out infinite alternate;
             min-height: 100vh;
+            margin: 0;
             display: flex;
             align-items: center;
             justify-content: center;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 100%;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
         .login-container {
             background: white;
             border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            box-shadow: 0 25px 60px rgba(0,0,0,0.18);
             overflow: hidden;
             width: 100%;
             max-width: 900px;
             min-height: 500px;
+            /* Animasi slide/fade in */
+            opacity: 0;
+            transform: translateY(30px);
+            animation: loginSlideUp 0.8s ease-out forwards;
         }
 
         .login-left {
@@ -167,6 +186,59 @@
             .login-title {
                 font-size: 2rem;
             }
+        }
+
+        /* Animasi background halaman login */
+        @keyframes loginBgPulse {
+            0% { background-position: 0% 0%; }
+            50% { background-position: 50% 100%; }
+            100% { background-position: 100% 0%; }
+        }
+
+        /* Lapisan glow lembut agar background tidak terasa solid */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: -20%;
+            background:
+                radial-gradient(circle at 10% 20%, rgba(248, 250, 252, 0.14), transparent 55%),
+                radial-gradient(circle at 80% 10%, rgba(254, 249, 195, 0.18), transparent 55%),
+                radial-gradient(circle at 20% 80%, rgba(252, 165, 165, 0.22), transparent 55%),
+                radial-gradient(circle at 90% 70%, rgba(254, 202, 202, 0.18), transparent 55%),
+                /* Corak garis diagonal tipis */
+                repeating-linear-gradient(135deg,
+                    rgba(248, 250, 252, 0.10) 0px,
+                    rgba(248, 250, 252, 0.10) 1px,
+                    transparent 1px,
+                    transparent 7px);
+            opacity: 0.9;
+            pointer-events: none;
+            mix-blend-mode: screen;
+            filter: blur(18px);
+            transform: translate3d(0,0,0);
+            animation: loginGlowDrift 26s ease-in-out infinite alternate;
+        }
+
+        /* Animasi slide-up untuk kotak login */
+        @keyframes loginSlideUp {
+            0% {
+                opacity: 0;
+                transform: translateY(30px) scale(0.98);
+            }
+            60% {
+                opacity: 1;
+                transform: translateY(-4px) scale(1.01);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @keyframes loginGlowDrift {
+            0% { transform: translate3d(-10px, -10px, 0) scale(1); }
+            50% { transform: translate3d(10px, 5px, 0) scale(1.05); }
+            100% { transform: translate3d(-5px, 10px, 0) scale(1.02); }
         }
     </style>
 </head>
@@ -357,7 +429,18 @@
                     ({ resp, data } = await tryLogin('/index.php/api/auth/login'));
                 }
 
-                if (resp.ok && data && data.success && data.token) {
+                if (resp.ok && data && data.success && data.requires_verification) {
+                    console.log('✅ Login membutuhkan verifikasi super admin:', data);
+
+                    // Simpan info untuk halaman verifikasi
+                    if (data.user && data.user.id) {
+                        sessionStorage.setItem('verifyUserId', data.user.id);
+                    }
+                    sessionStorage.setItem('verifyRememberMe', rememberMe ? '1' : '0');
+
+                    // Arahkan ke halaman verifikasi kode
+                    window.location.href = '/verify.html';
+                } else if (resp.ok && data && data.success && data.token) {
                     console.log('✅ Login successful:', data);
                     
                     // Store token with consistent key

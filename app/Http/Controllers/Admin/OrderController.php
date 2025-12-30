@@ -43,28 +43,4 @@ class OrderController extends BaseController
             return response()->json(['success' => false, 'message' => 'Failed to delete order'], 500);
         }
     }
-
-    public function updateTracking(Request $req, $id)
-    {
-        try {
-            $orderId = (int)$id;
-            if ($orderId <= 0) {
-                return response()->json(['success' => false, 'message' => 'Invalid order ID'], 400);
-            }
-
-            $tracking = (string)$req->input('tracking', '');
-            $affected = DB::update(
-                'UPDATE orders SET tracking_number = ?, tracking = ? WHERE id = ? LIMIT 1',
-                [$tracking, $tracking, $orderId]
-            );
-
-            if ($affected === 0) {
-                return response()->json(['success' => false, 'message' => 'Order not found'], 404);
-            }
-
-            return response()->json(['success' => true, 'message' => 'Tracking updated successfully']);
-        } catch (\Throwable $e) {
-            return response()->json(['success' => false, 'message' => 'Failed to update tracking'], 500);
-        }
-    }
 }
