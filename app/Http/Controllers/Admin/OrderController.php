@@ -13,31 +13,34 @@ class OrderController extends BaseController
         $customerEmail = $req->query('customer_email');
         $status = $req->query('status');
         $limit = min((int)($req->query('limit', 50)), 200);
-
-        $where = [];
-        $params = [];
-
-        if ($customerEmail) {
-            $where[] = 'customer_email = ?';
-            $params[] = (string)$customerEmail;
-        }
-
-        if ($status) {
-            $where[] = 'status = ?';
-            $params[] = (string)$status;
-        }
-
-        $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
-
+        $where = [];$params = [];
+        if ($customerEmail) { $where[] = 'customer_email = ?'; $params[] = (string)$customerEmail; }
+        if ($status) { $where[] = 'status = ?'; $params[] = (string)$status; }
+        $whereSql = $where ? ('WHERE '.implode(' AND ',$where)) : '';
         try {
-            $rows = DB::select(
-                "SELECT * FROM orders $whereSql ORDER BY id DESC LIMIT $limit",
-                $params
-            );
-
-            return response()->json(['success' => true, 'data' => $rows]);
+            $rows = DB::select("SELECT * FROM orders $whereSql ORDER BY id DESC LIMIT $limit", $params);
+            return response()->json(['success'=>true,'data'=>$rows]);
         } catch (\Throwable $e) {
-            return response()->json(['success' => false, 'data' => []], 500);
+            return response()->json(['success'=>true,'data'=>[]]);
+        }
+    }
+
+    public function destroy(Request $req, $id)
+    {
+        try {
+            $orderId = (int)$id;
+            if ($orderId <= 0) {
+                return response()->json(['success' => false, 'message' => 'Invalid order ID'], 400);
+            }
+
+            $deleted = DB::delete('DELETE FROM orders WHERE id = ? LIMIT 1', [$orderId]);
+            if ($deleted === 0) {
+                return response()->json(['success' => false, 'message' => 'Order not found'], 404);
+            }
+
+            return response()->json(['success' => true, 'message' => 'Order deleted successfully']);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Failed to delete order'], 500);
         }
     }
 
@@ -49,19 +52,13 @@ class OrderController extends BaseController
                 return response()->json(['success' => false, 'message' => 'Invalid order ID'], 400);
             }
 
-            $order = DB::selectOne(
-                'SELECT * FROM orders WHERE id = ? LIMIT 1',
-                [$orderId]
-            );
-
+            $order = DB::selectOne('SELECT * FROM orders WHERE id = ? LIMIT 1', [$orderId]);
             if (!$order) {
                 return response()->json(['success' => false, 'message' => 'Order not found'], 404);
             }
 
-            $items = DB::select(
-                'SELECT * FROM order_items WHERE order_id = ?',
-                [$orderId]
-            );
+            // Get order items
+            $items = DB::select('SELECT * FROM order_items WHERE order_id = ?', [$orderId]);
 
             return response()->json([
                 'success' => true,
@@ -75,29 +72,6 @@ class OrderController extends BaseController
         }
     }
 
-    public function destroy(Request $req, $id)
-    {
-        try {
-            $orderId = (int)$id;
-            if ($orderId <= 0) {
-                return response()->json(['success' => false, 'message' => 'Invalid order ID'], 400);
-            }
-
-            $deleted = DB::delete(
-                'DELETE FROM orders WHERE id = ? LIMIT 1',
-                [$orderId]
-            );
-
-            if ($deleted === 0) {
-                return response()->json(['success' => false, 'message' => 'Order not found'], 404);
-            }
-
-            return response()->json(['success' => true, 'message' => 'Order deleted successfully']);
-        } catch (\Throwable $e) {
-            return response()->json(['success' => false, 'message' => 'Failed to delete order'], 500);
-        }
-    }
-
     public function updateTracking(Request $req, $id)
     {
         try {
@@ -107,7 +81,6 @@ class OrderController extends BaseController
             }
 
             $tracking = (string)$req->input('tracking', '');
-
             $affected = DB::update(
                 'UPDATE orders SET tracking_number = ?, tracking = ? WHERE id = ? LIMIT 1',
                 [$tracking, $tracking, $orderId]
@@ -132,9 +105,7 @@ class OrderController extends BaseController
             }
 
             $status = (string)$req->input('status', '');
-            $allowedStatus = ['pending', 'processing', 'shipped', 'completed', 'canceled'];
-
-            if (!in_array($status, $allowedStatus)) {
+            if (!in_array($status, ['pending', 'processing', 'shipped', 'completed', 'canceled'])) {
                 return response()->json(['success' => false, 'message' => 'Invalid status'], 400);
             }
 
@@ -166,37 +137,66 @@ class OrderController extends BaseController
                 return response()->json(['success' => false, 'message' => 'Invalid order ID'], 400);
             }
 
-            $order = DB::selectOne(
-                'SELECT * FROM orders WHERE id = ? LIMIT 1',
-                [$orderId]
-            );
-
+            // Get order
+            $order = DB::selectOne('SELECT * FROM orders WHERE id = ? LIMIT 1', [$orderId]);
             if (!$order) {
                 return response()->json(['success' => false, 'message' => 'Order not found'], 404);
             }
 
+            // Get order items
             $items = DB::select(
                 'SELECT * FROM order_items WHERE order_id = ? ORDER BY id',
                 [$orderId]
             );
 
+            // Calculate totals
             $subtotal = 0;
-            foreach ($items as $item) {
-                $subtotal += ((int)$item->quantity) * ((float)$item->price);
+            foreach ($items as $it) {
+                $qty = isset($it->quantity) ? (int)$it->quantity : 0;
+                $price = isset($it->price) ? (float)$it->price : 0.0;
+                $subtotal += $qty * $price;
             }
 
-            $tax = isset($order->tax_amount)
-                ? (float)$order->tax_amount
-                : round($subtotal * 0.10);
+            // Tax: if order has tax field use it, otherwise default 10%
+            $tax = 0;
+            if (isset($order->tax_amount)) {
+                $tax = (float)$order->tax_amount;
+            } else {
+                $tax = round($subtotal * 0.10);
+            }
 
-            $shipping = (float)($order->shipping_cost ?? 0);
+            $shipping = isset($order->shipping_cost) ? (float)$order->shipping_cost : 0.0;
             $grandTotal = $subtotal + $tax + $shipping;
+
+            // Store info - always use PT Indo Bismar for name, get other details from config
+            $storeName = 'PT Indo Bismar'; // Hard-coded for consistency
+            $configName = config('app.name') ?: '';
+            // Only use config name if it's explicitly set and not "Laravel"
+            if (!empty($configName) && strtolower($configName) !== 'laravel') {
+                $storeName = $configName;
+            }
+            
+            $store = [
+                'name' => $storeName,
+                'address' => config('app.store_address') ?? 'Jl. Bendul Merisi Selatan XI No.59-61, Bendul Merisi, Kec. Wonocolo, Surabaya, Jawa Timur 60239',
+                'phone' => config('app.store_phone') ?? '(031) 8474685',
+                'email' => config('mail.from.address') ?? 'info@bismarshop.com',
+                'website' => config('app.url') ?? 'https://bismarshop.com'
+            ];
+
+            $receiptNumber = isset($order->receipt_number) && $order->receipt_number ? $order->receipt_number : ('RE' . str_pad((string)$orderId, 6, '0', STR_PAD_LEFT));
+
+            // Attach items to order object for backward compatibility with client code
+            try { $order->items = $items; } catch (\Throwable $_) {}
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'order' => $order,
                     'items' => $items,
+                    'store' => $store,
+                    'receiptNumber' => $receiptNumber,
+                    'printDate' => date('c'),
                     'subtotal' => $subtotal,
                     'tax' => $tax,
                     'shipping' => $shipping,

@@ -9,20 +9,6 @@
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
-    <style>
-        /* Spacing seragam untuk kolom ACTIONS di seluruh tabel admin */
-        td.action-buttons, th.action-buttons {
-            white-space: nowrap;
-            text-align: center;
-            vertical-align: middle;
-        }
-        td.action-buttons .btn-group {
-            gap: 2px;
-        }
-        td.action-buttons .btn {
-            margin-inline: 1px;
-        }
-    </style>
 </head>
 <body>
     <!-- Navigation -->
@@ -802,7 +788,7 @@
                             <div class="row g-3 mb-3" id="ordersToolbar">
                                 <div class="col-md-4">
                                     <label class="form-label" for="ordersSearch">Search Orders</label>
-                                    <input type="text" class="form-control" id="ordersSearch" placeholder="Cari order id, customer, email, alamat...">
+                                    <input type="text" class="form-control" id="ordersSearch" placeholder="Cari order id, customer, email, alamat, tracking...">
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label" for="ordersStatusFilter">Filter Status</label>
@@ -836,6 +822,7 @@
                                             <th>Customer</th>
                                             <th>Email</th>
                                             <th>Address</th>
+                                            <th>Tracking</th>
                                             <th>Total Amount</th>
                                             <th>Status</th>
                                             <th>Date</th>
