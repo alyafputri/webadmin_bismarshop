@@ -1,78 +1,90 @@
+// ================= CUSTOMERS MANAGEMENT =================
+async function loadCustomers() {
+    const tbody = document.getElementById('customersTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><div class="mt-2">Loading customers...</div></td></tr>`;
+    try {
+        const resp = await apiCall('/api/admin/customers', 'GET');
+        if (!resp || !resp.success) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">Gagal memuat data pelanggan</td></tr>`;
+            return;
+        }
+        const rows = Array.isArray(resp.data) ? resp.data : [];
+        if (!rows.length) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">Belum ada data pelanggan</td></tr>`;
+            return;
+        }
+        tbody.innerHTML = rows.map(renderCustomerRow).join('');
+    } catch (e) {
+        console.error('loadCustomers error', e);
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">Gagal memuat data pelanggan</td></tr>`;
+    }
+}
+
+function renderCustomerRow(c) {
+    // Fallbacks for missing fields
+    const name = c.name || '-';
+    const email = c.email || '-';
+    const phone = c.phone || '-';
+    const orders = typeof c.total_orders === 'number' ? c.total_orders : (parseInt(c.total_orders,10)||0);
+    const spent = typeof c.total_spent === 'number' ? c.total_spent : (parseInt(c.total_spent,10)||0);
+    const status = c.status || '-';
+    const joined = c.created_at ? formatDate(c.created_at) : '-';
+    // Status dropdown for admin update
+    const statusOptions = ['active','inactive','banned'].map(s => `<option value="${s}" ${String(status).toLowerCase()===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
+    return `
+        <tr>
+            <td>${escapeHtml(name)}</td>
+            <td class="d-none d-md-table-cell">${escapeHtml(email)}</td>
+            <td class="d-none d-lg-table-cell">${escapeHtml(phone)}</td>
+            <td class="d-none d-sm-table-cell text-center">${orders}</td>
+            <td class="d-none d-md-table-cell text-end">${formatCurrency(spent)}</td>
+            <td class="text-center">
+                <select class="form-select form-select-sm w-auto d-inline" onchange="updateCustomerStatus(${c.id}, this.value, this)">
+                    ${statusOptions}
+                </select>
+                <span class="badge bg-${status==='active'?'success':status==='banned'?'danger':status==='pending'?'warning':'secondary'} text-uppercase ms-1">${escapeHtml(status)}</span>
+            </td>
+            <td class="d-none d-lg-table-cell text-center">${escapeHtml(joined)}</td>
+            <td class="text-center">-</td>
+        </tr>
+    `;
+// Update customer status handler
+window.updateCustomerStatus = async function updateCustomerStatus(id, newStatus, el) {
+    if (!id || !newStatus) return;
+    const prev = el ? el.value : null;
+    el && (el.disabled = true);
+    try {
+        const resp = await apiCall(`/api/admin/customers/${id}/status`, 'PATCH', { status: newStatus });
+        if (resp && resp.success) {
+            showNotification('Status pelanggan berhasil diupdate', 'success');
+            // Optionally update badge text
+            const badge = el?.parentElement?.querySelector('.badge');
+            if (badge) {
+                badge.textContent = newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
+                badge.className = `badge bg-${newStatus==='active'?'success':newStatus==='banned'?'danger':newStatus==='pending'?'warning':'secondary'} text-uppercase ms-1`;
+            }
+            // Refresh daftar customers agar tampilan selalu terbaru
+            try { await loadCustomers(); } catch(_) {}
+        } else {
+            showNotification('Gagal update status pelanggan', 'error');
+            if (el && prev) el.value = prev;
+            console.error('Failed to update customer status:', resp);
+        }
+    } catch (e) {
+        showNotification('Terjadi kesalahan saat update status pelanggan', 'error');
+        if (el && prev) el.value = prev;
+        console.error('Failed to update customer status:', e);
+    } finally {
+        el && (el.disabled = false);
+    }
+}
+}
 // Main JavaScript for BismarShop Admin Dashboard
 
 // Global variables
 let currentSection = 'dashboard';
 let products = [];
-let orders = [];
-let customers = [];
-let dashboardStats = {};
-let enhancedDashboardData = {};
-let currentUser = null;
-let authToken = null;
-let userPermissions = [];
-
-// Client-side permissions map as a fallback in case API does not return permissions
-const rolesPermissions = {
-    super_admin: [
-        'dashboard', 'products', 'customers', 'orders',
-        'vouchers', 'flash-sales', 'free-shipping', 'product-vouchers',
-        'reviews', 'analytics', 'categories', 'settings', 'widgets', 'best-sellers', 'admin-management'
-    ],
-    manager: [
-        'dashboard', 'products', 'customers',
-        'vouchers', 'flash-sales', 'free-shipping', 'product-vouchers',
-        'reviews', 'widgets', 'categories', 'best-sellers'
-    ],
-    staff: [
-        'dashboard', 'products', 'customers', 'reviews', 'categories', 'best-sellers'
-    ]
-};
-
-// Initialize the application
-document.addEventListener('DOMContentLoaded', function() {
-    checkAuthentication();
-    
-    // Force show admin menu after a short delay
-    setTimeout(() => {
-        showAdminMenu();
-    }, 1000);
-});
-
-// Force refresh function for testing
-window.forceRefreshAuth = function() {
-    localStorage.removeItem('adminToken');
-    sessionStorage.removeItem('adminToken');
-    location.reload();
-};
-
-// Debug function to test widgets
-window.testWidgets = async function() {
-    console.log('🧪 Testing widgets functionality...');
-
-    try {
-        const resp = await fetch('/api/widgets', {
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
-
-        console.log('📡 Response status:', resp.status);
-        console.log('📡 Response headers:', [...resp.headers.entries()]);
-
-        const data = await resp.json();
-        console.log('📊 Response data:', data);
-
-        const tbody = document.getElementById('widgetsTableBody');
-        console.log('📋 Table body element:', tbody);
-
-        if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-success">✅ Test berhasil!</td></tr>';
-        }
-
-    } catch (error) {
-        console.error('❌ Test widgets error:', error);
-    }
-};
 
 // Function to fix widget data and reload
 window.fixWidgetData = async function() {
@@ -351,6 +363,19 @@ function renderOrders() {
         const sample = (allOrdersCache || []).slice(0, 5).map(x => normalizeOrderStatus(x.status || x.order_status));
         console.debug('[Orders] selected =', status || '(all)', 'total=', allOrdersCache.length, 'shown=', rows.length, 'sample statuses=', sample);
     } catch(_){ }
+    // Safety: hapus ikon dan tombol "View" khusus di section Orders
+    try {
+        const ordersSection = document.getElementById('orders');
+        if (ordersSection) {
+            ordersSection.querySelectorAll('.fa-eye').forEach(el => el.remove());
+            ordersSection.querySelectorAll('button, a').forEach(el => {
+                const txt = (el.textContent || '').trim().toLowerCase();
+                if (txt === 'view' || txt === 'lihat') {
+                    el.remove();
+                }
+            });
+        }
+    } catch(_) {}
 }
 
 function renderOrderRow(o) {
@@ -379,8 +404,13 @@ function renderOrderRow(o) {
             </td>
             <td>${escapeHtml(date)}</td>
             <td>
+<<<<<<< HEAD
                 <button class="btn btn-sm btn-outline-success" onclick="printReceipt(${id})"><i class="fas fa-receipt"></i></button>
                 <button class="btn btn-sm btn-outline-danger" onclick="deleteOrder(${id})"><i class="fas fa-trash"></i></button>
+=======
+                <button class="btn btn-sm btn-outline-success" onclick="printReceipt(${id})">Cetak</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteOrder(${id})">Hapus</button>
+>>>>>>> 3821903433089c91e19d9c600e8182840e50bf8f
             </td>
         </tr>`;
 }
@@ -407,6 +437,56 @@ async function deleteOrder(id) {
     }
 }
 
+<<<<<<< HEAD
+=======
+// Edit tracking information for an order (resi / status pengiriman)
+window.editOrderTracking = async function editOrderTracking(id) {
+    try {
+        const idStr = String(id);
+        // Cari order baik di allOrdersCache maupun di array orders (fallback lama)
+        const fromCache = (typeof allOrdersCache !== 'undefined' && Array.isArray(allOrdersCache))
+            ? allOrdersCache.find(o => String(o.id) === idStr)
+            : null;
+        const fromOrders = (typeof orders !== 'undefined' && Array.isArray(orders))
+            ? orders.find(o => String(o.id) === idStr)
+            : null;
+        const order = fromCache || fromOrders || null;
+
+        const current = order ? (order.tracking_number || order.tracking || '') : '';
+        const tracking = prompt('Masukkan informasi tracking (resi / status pengiriman):', current);
+        if (tracking === null) return; // user batal
+
+        const payload = { tracking };
+        const result = await apiCall(`/api/orders/${idStr}/tracking`, 'PUT', payload);
+        console.log('Update tracking response:', result);
+
+        if (result && result.success) {
+            showNotification('Tracking berhasil diperbarui', 'success');
+            // Update objek order di kedua sumber bila ada
+            if (fromCache) {
+                fromCache.tracking_number = tracking;
+                fromCache.tracking = tracking;
+            }
+            if (fromOrders && fromOrders !== fromCache) {
+                fromOrders.tracking_number = tracking;
+                fromOrders.tracking = tracking;
+            }
+            // Update tampilan span di kedua kemungkinan ID
+            const span1 = document.getElementById(`tracking-display-${idStr}`);
+            const span2 = document.getElementById(`trk-${idStr}`);
+            const text = tracking || '-';
+            if (span1) span1.textContent = text;
+            if (span2) span2.textContent = text;
+        } else {
+            showNotification(result?.message || 'Gagal memperbarui tracking', 'error');
+        }
+    } catch (e) {
+        console.error('editOrderTracking error', e);
+        showNotification('Terjadi kesalahan saat memperbarui tracking', 'error');
+    }
+}
+
+>>>>>>> 3821903433089c91e19d9c600e8182840e50bf8f
 function debounce(fn, wait) {
     let t;
     return function(...args) {
@@ -424,6 +504,7 @@ function formatDate(d) {
 }
 
 function capitalize(s){ return (s||'').charAt(0).toUpperCase() + (s||'').slice(1); }
+function capitalizeFirst(s){ return capitalize(s); } // Alias for backward compatibility
 
 // ===== Best Sellers Page =====
 window.loadBestSellers = async function loadBestSellers() {
@@ -1696,7 +1777,9 @@ function showSection(sectionName) {
             loadProductVouchers();
             break;
         case 'reviews':
-            loadReviews();
+            // Start lightweight live polling so new customer reviews appear automatically
+            // when an admin is viewing the reviews page.
+            startReviewsLive();
             break;
         case 'widgets':
             console.log('🎯 Loading widgets section...');
@@ -2449,6 +2532,10 @@ function updateProductsTable() {
                     <button class="btn btn-sm btn-outline-primary" onclick="editProduct('${product.id}')" title="Edit Product">
                         <i class="fas fa-edit"></i>
                     </button>
+<<<<<<< HEAD
+=======
+                    <!-- View button removed per request -->
+>>>>>>> 3821903433089c91e19d9c600e8182840e50bf8f
                     <button class="btn btn-sm btn-outline-danger" onclick="deleteProduct('${product.id}')" title="Delete Product">
                         <i class="fas fa-trash"></i>
                     </button>
@@ -2457,6 +2544,20 @@ function updateProductsTable() {
         tbody.appendChild(row);
     });
     console.log('[Products] rows appended:', tbody.children.length);
+
+    // Safety: hapus ikon mata dan tombol "View/Lihat" khusus di section Products
+    try {
+        const productsSection = document.getElementById('products');
+        if (productsSection) {
+            productsSection.querySelectorAll('.fa-eye').forEach(el => el.remove());
+            productsSection.querySelectorAll('button, a').forEach(el => {
+                const txt = (el.textContent || '').trim().toLowerCase();
+                if (txt === 'view' || txt === 'lihat') {
+                    el.remove();
+                }
+            });
+        }
+    } catch (_) {}
 }
 
 // Global variables for product management
@@ -2824,117 +2925,7 @@ function editProduct(productId) {
     showProductModal(productId);
 }
 
-async function viewProduct(productId) {
-    try {
-        // Prepare modal and show loading state early
-        const modalEl = document.getElementById('productViewModal');
-        if (!modalEl) return;
-        const loader = document.getElementById('viewProductLoading');
-        const titleEl = document.getElementById('viewProductTitle');
-        const imgWrap = document.getElementById('viewProductImages');
-        const detailsEl = document.getElementById('viewProductDetails');
-        const variantsEl = document.getElementById('viewProductVariants');
-
-        if (loader) loader.classList.remove('d-none');
-        if (titleEl) titleEl.textContent = '';
-        if (imgWrap) imgWrap.innerHTML = '';
-        if (detailsEl) detailsEl.innerHTML = '';
-        if (variantsEl) variantsEl.innerHTML = '';
-
-        const modal = (bootstrap.Modal.getOrCreateInstance ? bootstrap.Modal.getOrCreateInstance(modalEl) : new bootstrap.Modal(modalEl));
-        modal.show();
-
-        // Fetch fresh data
-        console.debug('[ViewProduct] requested id:', productId);
-        const resp = await apiCall(`/api/products/${productId}`);
-        console.debug('[ViewProduct] API response:', resp);
-        let p = resp && (resp.data || resp);
-        // Fallback: use locally loaded products if API did not return a record
-        if (!p && Array.isArray(products)) {
-            const pidNum = Number(productId);
-            p = products.find(x => x && (Number(x.id) === pidNum || String(x.id) === String(productId)));
-            if (p) console.debug('[ViewProduct] Using local product cache as fallback');
-        }
-        if (!p) {
-            if (detailsEl) detailsEl.innerHTML = '<div class="text-danger">Failed to load product details.</div>';
-            if (variantsEl) variantsEl.innerHTML = '';
-            if (imgWrap) imgWrap.innerHTML = '';
-            showNotification('Failed to load product details', 'error');
-            if (loader) loader.classList.add('d-none');
-            return;
-        }
-
-        // Normalize variants and images
-        let variants = [];
-        const toArray = (val) => {
-            if (Array.isArray(val)) return val;
-            if (typeof val === 'string') { try { return JSON.parse(val); } catch { return []; } }
-            if (val && typeof val === 'object') return Object.entries(val).map(([k,v]) => ({type:k, name:String(v)}));
-            return [];
-        };
-        variants = toArray(p.variants || p.variants_json || []);
-        const images = Array.isArray(p.images) ? p.images : [];
-
-        // Populate modal
-        document.getElementById('viewProductTitle').textContent = p.name || '';
-        if (images.length > 1) {
-            const carouselId = 'viewProductCarousel';
-            const indicators = images.map((_, i) => `
-                <button type="button" data-bs-target="#${carouselId}" data-bs-slide-to="${i}" ${i===0?'class="active" aria-current="true"':''} aria-label="Slide ${i+1}"></button>
-            `).join('');
-            const inner = images.map((u, i) => `
-                <div class="carousel-item ${i===0?'active':''}">
-                    <img src="${u}" class="d-block w-100" style="max-height:380px;object-fit:contain;" alt="image-${i}">
-                </div>
-            `).join('');
-            imgWrap.innerHTML = `
-                <div id="${carouselId}" class="carousel slide" data-bs-ride="carousel">
-                    <div class="carousel-indicators">${indicators}</div>
-                    <div class="carousel-inner">${inner}</div>
-                    <button class="carousel-control-prev" type="button" data-bs-target="#${carouselId}" data-bs-slide="prev">
-                        <span class="carousel-control-prev-icon" aria-hidden="true"></span>
-                        <span class="visually-hidden">Previous</span>
-                    </button>
-                    <button class="carousel-control-next" type="button" data-bs-target="#${carouselId}" data-bs-slide="next">
-                        <span class="carousel-control-next-icon" aria-hidden="true"></span>
-                        <span class="visually-hidden">Next</span>
-                    </button>
-                </div>`;
-        } else if (images.length === 1) {
-            imgWrap.innerHTML = `<img src="${images[0]}" style="width:100%;max-height:380px;object-fit:contain;border-radius:6px;border:1px solid #ddd;"/>`;
-        } else {
-            imgWrap.innerHTML = '<span class="text-muted">No images</span>';
-        }
-
-        const details = [
-            {label:'Category', value: p.category || '-'},
-            {label:'Regular Price', value: formatCurrency(p.regular_price || 0)},
-            {label:'Promo Price', value: p.promo_price ? formatCurrency(p.promo_price) : '-'},
-            {label:'Stock', value: Number.isFinite(+p.stock) ? parseInt(p.stock,10) : 0},
-            {label:'Status', value: p.status || '-'},
-            {label:'Description', value: p.description || '-'}
-        ];
-        detailsEl.innerHTML = details.map(d => `
-            <div class="col-md-6">
-                <div class="border rounded p-2">
-                    <div class="text-muted small">${d.label}</div>
-                    <div class="fw-bold">${d.value}</div>
-                </div>
-            </div>`).join('');
-
-        variantsEl.innerHTML = variants.length
-            ? variants.map(v => `<span class="badge bg-light text-dark">${(v && (v.name || v.type || '')).toString()}</span>`).join(' ')
-            : '<span class="text-muted">No variants</span>';
-
-        // Hide loader after populate
-        if (loader) loader.classList.add('d-none');
-    } catch (e) {
-        console.error('viewProduct error:', e);
-        showNotification('Error loading product details', 'error');
-        const loader = document.getElementById('viewProductLoading');
-        if (loader) loader.classList.add('d-none');
-    }
-}
+// viewProduct removed per request (product view icon/functionality deprecated)
 
 async function deleteProduct(productId) {
     if (confirm('Are you sure you want to delete this product?')) {
@@ -3382,18 +3373,49 @@ function updateOrdersTable() {
                     <option value="processing" ${String(order.status).toLowerCase()==='processing' ? 'selected' : ''}>Processing</option>
                     <option value="shipped" ${String(order.status).toLowerCase()==='shipped' ? 'selected' : ''}>Shipped</option>
                     <option value="completed" ${String(order.status).toLowerCase()==='completed' ? 'selected' : ''}>Completed</option>
-                    <option value="cancelled" ${String(order.status).toLowerCase()==='cancelled' ? 'selected' : ''}>Cancelled</option>
+                    <option value="canceled" ${String(order.status).toLowerCase()==='canceled' ? 'selected' : ''}>Canceled</option>
                 </select>
             </td>
             <td>${formatDate(order.created_at)}</td>
             <td class="action-buttons">
+<<<<<<< HEAD
                 <button class="btn btn-sm btn-outline-success" onclick="printReceipt('${order.id}')" title="Print Receipt">
                     <i class="fas fa-print"></i>
                 </button>
+=======
+                <button class="btn btn-sm btn-outline-success" onclick="printReceipt('${order.id}')" title="Print Receipt">Cetak</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="forceCancelOrder('${order.id}')" title="Cancel Order">Batal</button>
+>>>>>>> 3821903433089c91e19d9c600e8182840e50bf8f
             </td>
         `;
         tbody.appendChild(row);
     });
+    // Safety: ensure any leftover "view" icons inside the orders area are removed
+    try { document.querySelectorAll('#orders .fa-eye').forEach(el => el.remove()); } catch(_) {}
+// Fungsi untuk cancel order secara paksa
+async function forceCancelOrder(orderId) {
+    if (!orderId) return;
+    if (!confirm('Yakin ingin membatalkan pesanan ini?')) return;
+    try {
+        const resp = await apiCall(`/api/orders/${orderId}`, 'PUT', { status: 'canceled' });
+        if (resp && resp.success) {
+            showNotification('Pesanan berhasil dibatalkan!', 'success');
+            // Update status di local array dan refresh tabel
+            const idx = Array.isArray(orders) ? orders.findIndex(o => String(o.id) === String(orderId)) : -1;
+            if (idx >= 0) {
+                orders[idx].status = 'canceled';
+                updateOrdersTable();
+            }
+            // Refresh data dari server
+            loadDashboardData();
+        } else {
+            showNotification(resp && resp.message ? 'Gagal membatalkan pesanan: ' + resp.message : 'Gagal membatalkan pesanan', 'error');
+        }
+    } catch (e) {
+        showNotification('Terjadi kesalahan saat membatalkan pesanan', 'error');
+        console.error('forceCancelOrder error', e);
+    }
+}
 }
 
 async function updateOrderStatus(orderId, newStatus, el = null) {
@@ -3434,6 +3456,7 @@ async function updateOrderStatus(orderId, newStatus, el = null) {
     }
 }
 
+<<<<<<< HEAD
 function viewOrderDetails(orderId) {
     const order = Array.isArray(orders) ? orders.find(o => String(o.id) === String(orderId)) : null;
     if (!order) {
@@ -3462,6 +3485,11 @@ function viewOrderDetails(orderId) {
 
     showNotification(details, 'info', 10000);
 }
+=======
+// Order detail modal and legacy view handlers removed per request.
+// All runtime shims and modal UI for viewing orders/products have been deleted.
+// This file no longer exposes `viewOrder`, `viewOrderDetails`, `showOrderDetailModal`, or `viewProduct`.
+>>>>>>> 3821903433089c91e19d9c600e8182840e50bf8f
 
 // Receipt printing functionality
 async function printReceipt(orderId) {
@@ -3504,108 +3532,192 @@ async function printReceipt(orderId) {
 function generateReceiptHTML(receiptData) {
     const { order, store, receiptNumber, printDate, subtotal, tax, shipping, grandTotal } = receiptData;
     
-    let itemsHtml = '';
-    order.items.forEach(item => {
-        const itemTotal = item.price * item.quantity;
-        itemsHtml += `
-            <tr>
-                <td style="padding: 8px; border-bottom: 1px solid #eee;">${item.product_name}</td>
-                <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity}</td>
-                <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(item.price)}</td>
-                <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${formatCurrency(itemTotal)}</td>
-            </tr>
-        `;
+    // Determine store name - use fallback if not set or is "Laravel"
+    const storeName = (store && store.name && String(store.name).trim() !== '' && String(store.name).trim().toLowerCase() !== 'laravel') 
+        ? store.name 
+        : 'PT Indo Bismar';
+    
+    // Format dates and times for receipt
+    const receiptDate = new Date(printDate).toLocaleDateString('id-ID', { 
+        year: 'numeric', month: '2-digit', day: '2-digit' 
     });
+    const receiptTime = new Date(printDate).toLocaleTimeString('id-ID', { 
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false 
+    });
+    const orderDate = new Date(order.created_at).toLocaleDateString('id-ID', { 
+        year: 'numeric', month: 'long', day: 'numeric' 
+    });
+    
+    let itemsHtml = '';
+    if (order.items && order.items.length > 0) {
+        order.items.forEach(item => {
+            const itemTotal = (item.price || 0) * (item.quantity || 0);
+            itemsHtml += `
+                <tr>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd; width: 40%;">${escapeHtml(item.product_name || item.name || '-')}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center; width: 15%;">${item.quantity || 0}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right; width: 22%;">Rp ${formatCurrencySimple(item.price || 0)}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right; width: 23%;">Rp ${formatCurrencySimple(itemTotal)}</td>
+                </tr>
+            `;
+        });
+    }
     
     return `
         <!DOCTYPE html>
-        <html>
+        <html lang="id">
         <head>
             <meta charset="UTF-8">
-            <title>Receipt - Order #${order.id}</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Nota Pembelian - Order #${order.id}</title>
             <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
                 body {
-                    font-family: 'Courier New', monospace;
-                    margin: 0;
-                    padding: 20px;
+                    font-family: 'Segoe UI', 'Arial', sans-serif;
                     background: white;
-                    color: black;
-                    line-height: 1.4;
+                    color: #000;
+                    line-height: 1.5;
+                    padding: 20px;
+                    font-size: 13px;
                 }
                 .receipt-container {
-                    max-width: 600px;
+                    max-width: 750px;
                     margin: 0 auto;
-                    border: 2px solid #000;
-                    padding: 20px;
+                    border: 1px solid #999;
+                    padding: 30px 25px;
+                    background: #fff;
                 }
                 .header {
                     text-align: center;
-                    border-bottom: 2px solid #000;
+                    border-bottom: 3px double #000;
                     padding-bottom: 15px;
                     margin-bottom: 20px;
                 }
                 .store-name {
-                    font-size: 24px;
+                    font-size: 26px;
                     font-weight: bold;
-                    margin-bottom: 5px;
+                    margin-bottom: 8px;
+                    letter-spacing: 0.5px;
+                    color: #1a1a1a;
                 }
                 .store-info {
-                    font-size: 12px;
-                    margin: 2px 0;
+                    font-size: 11px;
+                    margin: 3px 0;
+                    color: #333;
                 }
-                .receipt-info {
-                    display: flex;
-                    justify-content: space-between;
-                    margin-bottom: 20px;
+                .divider-line {
+                    border-bottom: 1px solid #000;
+                    margin: 15px 0;
+                }
+                .receipt-header-row {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 20px;
+                    margin-bottom: 15px;
                     font-size: 12px;
+                }
+                .receipt-info-block {
+                    padding: 8px 0;
+                }
+                .receipt-label {
+                    font-weight: bold;
+                    font-size: 11px;
+                    color: #555;
+                }
+                .receipt-value {
+                    font-size: 13px;
+                    color: #000;
                 }
                 .customer-info {
                     margin-bottom: 20px;
-                    padding: 10px;
-                    border: 1px solid #000;
+                    padding: 12px;
+                    border: 1px solid #ccc;
+                    background: #f9f9f9;
+                    font-size: 12px;
+                }
+                .customer-info-title {
+                    font-weight: bold;
+                    margin-bottom: 10px;
+                    text-decoration: underline;
+                    font-size: 12px;
+                }
+                .customer-info-row {
+                    margin: 4px 0;
+                    display: grid;
+                    grid-template-columns: 100px 1fr;
+                }
+                .customer-info-row strong {
+                    font-weight: 600;
                 }
                 .items-table {
                     width: 100%;
                     border-collapse: collapse;
-                    margin-bottom: 20px;
+                    margin: 15px 0;
+                    font-size: 12px;
                 }
                 .items-table th {
                     background: #f0f0f0;
                     padding: 10px 8px;
-                    border: 1px solid #000;
+                    border-top: 1px solid #000;
+                    border-bottom: 2px solid #000;
                     text-align: left;
                     font-weight: bold;
+                    font-size: 11px;
                 }
                 .items-table td {
                     padding: 8px;
-                    border-bottom: 1px solid #eee;
+                    border-bottom: 1px solid #ddd;
                 }
-                .totals {
+                .items-table tbody tr:last-child td {
+                    border-bottom: 2px solid #000;
+                }
+                .totals-section {
                     border-top: 2px solid #000;
-                    padding-top: 10px;
+                    padding-top: 12px;
+                    margin-top: 10px;
+                    font-size: 12px;
                 }
                 .total-row {
                     display: flex;
                     justify-content: space-between;
-                    margin: 5px 0;
+                    padding: 6px 0;
+                    border-bottom: 1px dotted #ccc;
                 }
-                .grand-total {
+                .total-row.subtotal { font-weight: normal; }
+                .total-row.tax { font-weight: normal; }
+                .total-row.shipping { font-weight: normal; }
+                .total-row.grand-total {
                     font-weight: bold;
-                    font-size: 16px;
-                    border-top: 1px solid #000;
-                    padding-top: 10px;
-                    margin-top: 10px;
+                    font-size: 14px;
+                    border-top: 2px solid #000;
+                    border-bottom: 2px solid #000;
+                    padding: 10px 0;
+                    margin: 10px 0;
+                    background: #f5f5f5;
                 }
+                .grand-total-label { font-size: 14px; }
+                .grand-total-value { font-size: 16px; }
                 .footer {
                     text-align: center;
-                    margin-top: 30px;
-                    padding-top: 20px;
+                    margin-top: 25px;
+                    padding-top: 15px;
                     border-top: 1px solid #000;
+                    font-size: 11px;
+                }
+                .footer-text {
+                    margin: 5px 0;
+                    line-height: 1.5;
+                    color: #333;
+                }
+                .footer-thank {
+                    font-weight: bold;
+                    margin: 10px 0;
                     font-size: 12px;
                 }
                 @media print {
-                    body { margin: 0; padding: 10px; }
-                    .receipt-container { border: none; }
+                    body { margin: 0; padding: 5px; background: white; }
+                    .receipt-container { border: none; box-shadow: none; }
+                    @page { margin: 8mm; size: auto; }
                 }
             </style>
         </head>
@@ -3613,41 +3725,65 @@ function generateReceiptHTML(receiptData) {
             <div class="receipt-container">
                 <!-- Header -->
                 <div class="header">
-                    <div class="store-name">${store.name}</div>
-                    <div class="store-info">${store.address}</div>
-                    <div class="store-info">Tel: ${store.phone} | Email: ${store.email}</div>
-                    ${store.website ? `<div class="store-info">Website: ${store.website}</div>` : ''}
+                    <div class="store-name">${escapeHtml(storeName)}</div>
+                    <div class="store-info">${escapeHtml(store?.address || 'Jl. Bismarck, Jakarta')}</div>
+                    <div class="store-info">📞 ${escapeHtml(store?.phone || '(021) 555-0123')} | 📧 ${escapeHtml(store?.email || 'info@bismarshop.com')}</div>
                 </div>
                 
-                <!-- Receipt Info -->
-                <div class="receipt-info">
-                    <div>
-                        <strong>Receipt #:</strong> ${receiptNumber}<br>
-                        <strong>Order #:</strong> ${order.id}
+                <!-- Receipt & Order Info -->
+                <div class="receipt-header-row">
+                    <div class="receipt-info-block">
+                        <div class="receipt-label">No. Nota:</div>
+                        <div class="receipt-value">${escapeHtml(receiptNumber || '-')}</div>
                     </div>
-                    <div>
-                        <strong>Date:</strong> ${formatDate(printDate)}<br>
-                        <strong>Time:</strong> ${formatTime(printDate)}
+                    <div class="receipt-info-block">
+                        <div class="receipt-label">Tanggal Cetak:</div>
+                        <div class="receipt-value">${receiptDate} ${receiptTime}</div>
                     </div>
                 </div>
+                
+                <div class="receipt-header-row">
+                    <div class="receipt-info-block">
+                        <div class="receipt-label">No. Order:</div>
+                        <div class="receipt-value">#${order.id}</div>
+                    </div>
+                    <div class="receipt-info-block">
+                        <div class="receipt-label">Tgl. Order:</div>
+                        <div class="receipt-value">${orderDate}</div>
+                    </div>
+                </div>
+                
+                <div class="divider-line"></div>
                 
                 <!-- Customer Info -->
                 <div class="customer-info">
-                    <strong>CUSTOMER INFORMATION</strong><br>
-                    Name: ${order.customer_name}<br>
-                    Email: ${order.customer_email}<br>
-                    Order Date: ${formatDate(order.created_at)}<br>
-                    Status: ${capitalizeFirst(order.status)}
+                    <div class="customer-info-title">INFORMASI PELANGGAN</div>
+                    <div class="customer-info-row">
+                        <strong>Nama:</strong>
+                        <span>${escapeHtml(order.customer_name || '-')}</span>
+                    </div>
+                    <div class="customer-info-row">
+                        <strong>Email:</strong>
+                        <span>${escapeHtml(order.customer_email || '-')}</span>
+                    </div>
+                    <div class="customer-info-row">
+                        <strong>Alamat:</strong>
+                        <span>${escapeHtml(order.shipping_address || '-')}</span>
+                    </div>
+                    <div class="customer-info-row">
+                        <strong>Status:</strong>
+                        <span>${capitalizeFirst(normalizeOrderStatus(order.status || ''))}</span>
+                    </div>
                 </div>
                 
                 <!-- Items Table -->
                 <table class="items-table">
                     <thead>
                         <tr>
-                            <th>Item</th>
-                            <th style="text-align: center;">Qty</th>
-                            <th style="text-align: right;">Price</th>
-                            <th style="text-align: right;">Total</th>
+                            <th>Produk</th>
+                            <th style="text-align: center; width: 15%;">Qty</th>
+                            <th style="text-align: right; width: 22%;">Harga</th>
+                            <th style="text-align: right; width: 23%;">Total</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -3656,337 +3792,52 @@ function generateReceiptHTML(receiptData) {
                 </table>
                 
                 <!-- Totals -->
-                <div class="totals">
-                    <div class="total-row">
+                <div class="totals-section">
+                    <div class="total-row subtotal">
                         <span>Subtotal:</span>
-                        <span>${formatCurrency(subtotal)}</span>
+                        <span style="text-align: right;">Rp ${formatCurrencySimple(subtotal || 0)}</span>
                     </div>
-                    <div class="total-row">
-                        <span>Tax (10%):</span>
-                        <span>${formatCurrency(tax)}</span>
+                    <div class="total-row tax">
+                        <span>Pajak (10%):</span>
+                        <span style="text-align: right;">Rp ${formatCurrencySimple(tax || 0)}</span>
                     </div>
-                    <div class="total-row">
-                        <span>Shipping:</span>
-                        <span>${formatCurrency(shipping)}</span>
+                    <div class="total-row shipping">
+                        <span>Pengiriman:</span>
+                        <span style="text-align: right;">Rp ${formatCurrencySimple(shipping || 0)}</span>
                     </div>
                     <div class="total-row grand-total">
-                        <span>GRAND TOTAL:</span>
-                        <span>${formatCurrency(grandTotal)}</span>
+                        <span class="grand-total-label">TOTAL PEMBAYARAN:</span>
+                        <span class="grand-total-value">Rp ${formatCurrencySimple(grandTotal || 0)}</span>
                     </div>
                 </div>
                 
                 <!-- Footer -->
                 <div class="footer">
-                    <p><strong>Thank you for your business!</strong></p>
-                    <p>For questions about this order, please contact us at ${store.phone}</p>
-                    <p>This is a computer-generated receipt.</p>
+                    <div class="footer-thank">🙏 Terima Kasih atas Pembelian Anda!</div>
+                    <div class="footer-text">Untuk pertanyaan pesanan, hubungi kami di ${escapeHtml(store?.phone || '(021) 555-0123')}</div>
+                    <div class="footer-text">Nota ini adalah bukti pembelian yang sah dan dapat digunakan untuk klaim garansi</div>
+                    <div style="margin-top: 15px; font-size: 10px; color: #999;">Dicetak oleh: Sistem BismarShop | ${new Date().toLocaleString('id-ID')}</div>
                 </div>
             </div>
-            
-            <script>
-                // Helper functions for formatting
-                function formatCurrency(amount) {
-                    return new Intl.NumberFormat('id-ID', {
-                        style: 'currency',
-                        currency: 'IDR',
-                        minimumFractionDigits: 0
-                    }).format(amount);
-                }
-                
-                function formatDate(dateString) {
-                    return new Date(dateString).toLocaleDateString('id-ID', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                    });
-                }
-                
-                function formatTime(dateString) {
-                    return new Date(dateString).toLocaleTimeString('id-ID', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit'
-                    });
-                }
-                
-                function capitalizeFirst(str) {
-                    return str.charAt(0).toUpperCase() + str.slice(1);
-                }
-            </script>
         </body>
         </html>
     `;
 }
 
-// ===== CUSTOMERS MANAGEMENT =====
-
-let filteredCustomers = [];
-let currentPage = 1;
-let itemsPerPage = 10;
-
-// Load customers from API
-async function loadCustomers() {
-    try {
-        console.log('🔄 Loading customers...');
-        
-        // Show loading state
-        const tbody = document.getElementById('customersTableBody');
-        if (tbody) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="8" class="text-center py-4">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <div class="mt-2">Loading customers...</div>
-                    </td>
-                </tr>
-            `;
-        }
-        
-        // Reset statistics while loading
-        updateCustomersStatsLoading();
-        
-        const response = await apiCall('/api/customers');
-        console.log('📊 Customers response:', response);
-        
-        if (response && response.success && Array.isArray(response.data)) {
-            customers = response.data;
-            console.log(`✅ Loaded ${customers.length} customers`);
-        } else if (Array.isArray(response)) {
-            customers = response;
-            console.log(`✅ Loaded ${customers.length} customers (direct array)`);
-        } else {
-            console.warn('⚠️ No customers data received');
-            customers = [];
-        }
-        
-        // Ensure each customer has required fields
-        customers = customers.map(customer => ({
-            id: customer.id || 0,
-            name: customer.name || 'Unknown',
-            email: customer.email || '',
-            phone: customer.phone || '',
-            address: customer.address || '',
-            status: customer.status || 'active',
-            total_orders: parseInt(customer.total_orders) || 0,
-            total_spent: parseInt(customer.total_spent) || 0,
-            joined_date: customer.joined_date || customer.created_at || '',
-            created_at: customer.created_at || ''
-        }));
-        
-        filteredCustomers = [...customers];
-        updateCustomersTable();
-        updateCustomersStats();
-        
-        console.log(`✅ Customers loaded successfully: ${customers.length} total`);
-        
-    } catch (error) {
-        console.error('❌ Error loading customers:', error);
-        const tbody = document.getElementById('customersTableBody');
-        if (tbody) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="8" class="text-center text-danger py-4">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        Error loading customers. Please check your connection.
-                        <br>
-                        <small class="text-muted">${error.message}</small>
-                        <br>
-                        <button class="btn btn-sm btn-primary mt-2" onclick="loadCustomers()">
-                            <i class="fas fa-sync-alt me-1"></i>Retry
-                        </button>
-                    </td>
-                </tr>
-            `;
-        }
-        
-        // Reset stats on error
-        updateCustomersStatsError();
-        
-        showNotification('Error loading customers: ' + error.message, 'error');
-    }
-}
-
-// Update customers table with pagination and responsive design
-function updateCustomersTable() {
-    const tbody = document.getElementById('customersTableBody');
-    if (!tbody) return;
-
-    if (!filteredCustomers || filteredCustomers.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="8" class="text-center text-muted py-4">
-                    <i class="fas fa-users fa-3x mb-3 opacity-50"></i>
-                    <div>No customers found</div>
-                    <small>Try adjusting your search filters</small>
-                </td>
-            </tr>
-        `;
-        updatePagination(0);
-        return;
-    }
-
-    // Calculate pagination
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    const paginatedCustomers = filteredCustomers.slice(startIndex, endIndex);
-
-    let html = '';
-    paginatedCustomers.forEach(customer => {
-        const statusBadgeClass = getStatusBadgeClass(customer.status);
-        const statusIcon = getStatusIcon(customer.status);
-        
-        html += `
-            <tr>
-                <td>
-                    <div class="d-flex align-items-center">
-                        <div class="avatar-sm bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2">
-                            <i class="fas fa-user"></i>
-                        </div>
-                        <div>
-                            <div class="fw-bold">${escapeHtml(customer.name || 'N/A')}</div>
-                            <small class="text-muted d-md-none">${escapeHtml(customer.email || 'N/A')}</small>
-                        </div>
-                    </div>
-                </td>
-                <td class="d-none d-md-table-cell">
-                    <div>${escapeHtml(customer.email || 'N/A')}</div>
-                    <small class="text-muted">Email</small>
-                </td>
-                <td class="d-none d-lg-table-cell">
-                    <div>${escapeHtml(customer.phone || 'N/A')}</div>
-                    <small class="text-muted">Phone</small>
-                </td>
-                
-                <td class="d-none d-sm-table-cell text-center">
-                    <span class="badge bg-info">${customer.total_orders || 0}</span>
-                </td>
-                <td class="d-none d-md-table-cell text-end">
-                    <div class="fw-bold text-success">${formatCurrency(customer.total_spent || 0)}</div>
-                    <small class="text-muted">Total</small>
-                </td>
-                <td class="text-center">
-                    <div class="dropdown">
-                        <button class="btn btn-sm ${statusBadgeClass} dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false">
-                            <i class="fas ${statusIcon} me-1"></i>${capitalizeFirst(customer.status || 'active')}
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#" onclick="updateCustomerStatus(${customer.id}, 'active')">
-                                <i class="fas fa-user-check text-success me-2"></i>Active
-                            </a></li>
-                            <li><a class="dropdown-item" href="#" onclick="updateCustomerStatus(${customer.id}, 'inactive')">
-                                <i class="fas fa-user-times text-warning me-2"></i>Inactive
-                            </a></li>
-                            <li><a class="dropdown-item" href="#" onclick="updateCustomerStatus(${customer.id}, 'banned')">
-                                <i class="fas fa-user-slash text-danger me-2"></i>Banned
-                            </a></li>
-                        </ul>
-                    </div>
-                </td>
-                <td class="d-none d-lg-table-cell text-center">
-                    <div>${formatDate(customer.joined_date || customer.created_at)}</div>
-                    <small class="text-muted">Joined</small>
-                </td>
-                <td class="text-center">
-                    <div class="btn-group" role="group">
-                        <button class="btn btn-sm btn-outline-primary" onclick="viewCustomerDetails(${customer.id})" title="View Details">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                        <button class="btn btn-sm btn-outline-info" onclick="editCustomer(${customer.id})" title="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        `;
-    });
-
-    tbody.innerHTML = html;
-    updatePagination(filteredCustomers.length);
-    updateCustomerCountBadge();
-}
-
-// Cache for primary addresses
-const customerAddressesCache = new Map();
-
-// Load and render primary address for a customer into its cell
-async function loadPrimaryAddressForCustomer(customerId) {
-    const cell = document.getElementById(`addr-primary-${customerId}`);
-    if (!cell) return;
-    if (customerAddressesCache.has(customerId)) {
-        cell.textContent = customerAddressesCache.get(customerId);
-        return;
-    }
-    cell.textContent = 'Loading...';
-    let resp = await callCustomerAddressesApi(`?user_id=${customerId}`);
-    if (!resp || (!Array.isArray(resp.addresses) && resp.success !== true)) {
-        if (window.ALLOW_LARAVEL_ADDR === true) {
-            const laravelBases = ['/bismarshop-api', '/bismarshop-api/public', ''];
-            for (const base of laravelBases) {
-                const tryUrl = `${base}/admin/customers/${customerId}/addresses`;
-                const alt = await fetchJsonLoose(tryUrl, 'GET');
-                if (alt && Array.isArray(alt.addresses)) { resp = alt; break; }
-            }
-        }
-    }
-    const addresses = (resp && Array.isArray(resp.addresses)) ? resp.addresses : [];
-    if (!addresses.length) {
-        cell.textContent = '—';
-        customerAddressesCache.set(customerId, '—');
-        return;
-    }
-    const primary = addresses.find(a => a.is_default) || addresses[0];
-    const parts = [primary.address_line1, primary.address_line2, primary.district, primary.city, primary.province, primary.postal_code]
-        .filter(Boolean).map(x => String(x).trim()).filter(x => x.length);
-    const text = parts.join(', ');
-    cell.textContent = text || '—';
-    customerAddressesCache.set(customerId, cell.textContent);
-}
-
-// Update customers statistics
-function updateCustomersStats() {
-    if (!customers || customers.length === 0) {
-        updateCustomersStatsEmpty();
-        return;
-    }
-
-    const totalCustomers = customers.length;
-    const activeCustomers = customers.filter(c => c.status === 'active').length;
-    const inactiveCustomers = customers.filter(c => c.status === 'inactive').length;
-    const bannedCustomers = customers.filter(c => c.status === 'banned').length;
-
-    // Update UI elements
-    const totalEl = document.getElementById('totalCustomersCount');
-    const activeEl = document.getElementById('activeCustomersCount');
-    const inactiveEl = document.getElementById('inactiveCustomersCount');
-    const bannedEl = document.getElementById('bannedCustomersCount');
-
-    if (totalEl) totalEl.textContent = totalCustomers.toLocaleString();
-    if (activeEl) activeEl.textContent = activeCustomers.toLocaleString();
-    if (inactiveEl) inactiveEl.textContent = inactiveCustomers.toLocaleString();
-    if (bannedEl) bannedEl.textContent = bannedCustomers.toLocaleString();
-    
-    console.log(`📊 Stats updated: Total=${totalCustomers}, Active=${activeCustomers}, Inactive=${inactiveCustomers}, Banned=${bannedCustomers}`);
-}
-
-// Update stats with loading state
-function updateCustomersStatsLoading() {
-    const elements = ['totalCustomersCount', 'activeCustomersCount', 'inactiveCustomersCount', 'bannedCustomersCount'];
-    elements.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div>';
+// Helper functions for receipt formatting
+function formatCurrencySimple(amount) {
+    return (Number(amount) || 0).toLocaleString('id-ID', { 
+        minimumFractionDigits: 0, 
+        maximumFractionDigits: 0 
     });
 }
 
-// Update stats with empty state
-function updateCustomersStatsEmpty() {
-    const elements = ['totalCustomersCount', 'activeCustomersCount', 'inactiveCustomersCount', 'bannedCustomersCount'];
-    elements.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = '0';
-    });
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
+<<<<<<< HEAD
 
 // Update stats with error state
 function updateCustomersStatsError() {
@@ -9115,3 +8966,5 @@ window.forceShowWidgets = function() {
         console.error('❌ Widgets section not found');
     }
 };
+=======
+>>>>>>> 3821903433089c91e19d9c600e8182840e50bf8f

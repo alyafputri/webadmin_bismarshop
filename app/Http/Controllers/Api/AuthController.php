@@ -20,6 +20,7 @@ class AuthController extends BaseController
         $name     = trim((string) $request->input('name'));
         $email    = trim((string) $request->input('email'));
         $password = (string) $request->input('password');
+        $phone    = trim((string) $request->input('phone'));
 
         if ($name === '' || $email === '' || $password === '') {
             return response()->json(['success' => false, 'message' => 'Semua field harus diisi'], 400);
@@ -44,10 +45,17 @@ class AuthController extends BaseController
                 DB::statement("ALTER TABLE users ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 0");
             }
         } catch (\Throwable $e) {}
+        // Tambahkan kolom phone jika belum ada
+        try {
+            if (!Schema::hasColumn('users', 'phone')) {
+                DB::statement("ALTER TABLE users ADD COLUMN phone VARCHAR(50) NULL");
+            }
+        } catch (\Throwable $e) {}
 
         $hash = Hash::make($password);
 
-        $id = DB::table('users')->insertGetId([
+        // Susun data insert users secara dinamis agar aman jika kolom tertentu belum ada
+        $userData = [
             'name'       => $name,
             'email'      => $email,
             'password'   => $hash,
@@ -55,25 +63,12 @@ class AuthController extends BaseController
             'is_active'  => 0,            // default: belum disetujui admin
             'created_at' => now(),
             'updated_at' => now(),
-        ]);
+        ];
+        if (Schema::hasColumn('users', 'phone')) {
+            $userData['phone'] = $phone !== '' ? $phone : null;
+        }
 
-        // Opsional: tampilkan di tabel customers sebagai inactive
-        try {
-            if (DB::getSchemaBuilder()->hasTable('customers')) {
-                DB::table('customers')->updateOrInsert(
-                    ['email' => $email],
-                    [
-                        'name'         => $name,
-                        'status'       => 'inactive',
-                        'total_orders' => DB::raw('COALESCE(total_orders,0)'),
-                        'total_spent'  => DB::raw('COALESCE(total_spent,0)'),
-                        'joined_date'  => now(),
-                        'created_at'   => now(),
-                        'updated_at'   => now(),
-                    ]
-                );
-            }
-        } catch (\Throwable $e) {}
+        $id = DB::table('users')->insertGetId($userData);
 
         return response()->json([
             'success'  => true,
