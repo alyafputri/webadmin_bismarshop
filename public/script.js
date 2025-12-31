@@ -358,7 +358,6 @@ function renderOrderRow(o) {
     const customer = o.customer_name ?? '';
     const email = o.customer_email ?? '';
     const address = (o.shipping_address ?? o.address) ?? '';
-    const tracking = (o.tracking_number ?? o.tracking) ?? '-';
     const total = typeof o.total_amount === 'number' ? formatCurrency(o.total_amount) : (o.total_amount ?? '');
     const status = o.status ?? o.order_status ?? '';
     const date = o.created_at ? formatDate(o.created_at) : (o.date || '');
@@ -372,12 +371,6 @@ function renderOrderRow(o) {
             <td>${escapeHtml(customer)}</td>
             <td>${escapeHtml(email)}</td>
             <td>${escapeHtml(address)}</td>
-            <td>
-                <span id="tracking-display-${id}">${escapeHtml(tracking)}</span>
-                <button class="btn btn-sm btn-link text-decoration-none" title="Edit tracking" onclick="editOrderTracking(${id})">
-                    <i class="fas fa-edit"></i>
-                </button>
-            </td>
             <td>${escapeHtml(total)}</td>
             <td>
                 <select class="form-select form-select-sm" onchange="updateOrderStatus(${id}, this.value)">
@@ -386,7 +379,6 @@ function renderOrderRow(o) {
             </td>
             <td>${escapeHtml(date)}</td>
             <td>
-                <button class="btn btn-sm btn-outline-info" onclick="viewOrder(${id})"><i class="fas fa-eye"></i></button>
                 <button class="btn btn-sm btn-outline-success" onclick="printReceipt(${id})"><i class="fas fa-receipt"></i></button>
                 <button class="btn btn-sm btn-outline-danger" onclick="deleteOrder(${id})"><i class="fas fa-trash"></i></button>
             </td>
@@ -412,53 +404,6 @@ async function deleteOrder(id) {
     } catch (e) {
         console.error('deleteOrder error', e);
         showNotification('Terjadi kesalahan saat menghapus order', 'error');
-    }
-}
-
-// Edit tracking information for an order (resi / status pengiriman)
-window.editOrderTracking = async function editOrderTracking(id) {
-    try {
-        const idStr = String(id);
-        // Cari order baik di allOrdersCache maupun di array orders (fallback lama)
-        const fromCache = (typeof allOrdersCache !== 'undefined' && Array.isArray(allOrdersCache))
-            ? allOrdersCache.find(o => String(o.id) === idStr)
-            : null;
-        const fromOrders = (typeof orders !== 'undefined' && Array.isArray(orders))
-            ? orders.find(o => String(o.id) === idStr)
-            : null;
-        const order = fromCache || fromOrders || null;
-
-        const current = order ? (order.tracking_number || order.tracking || '') : '';
-        const tracking = prompt('Masukkan informasi tracking (resi / status pengiriman):', current);
-        if (tracking === null) return; // user batal
-
-        const payload = { tracking };
-        const result = await apiCall(`/api/orders/${idStr}`, 'PUT', payload);
-        console.log('Update tracking response:', result);
-
-        if (result && result.success) {
-            showNotification('Tracking berhasil diperbarui', 'success');
-            // Update objek order di kedua sumber bila ada
-            if (fromCache) {
-                fromCache.tracking_number = tracking;
-                fromCache.tracking = tracking;
-            }
-            if (fromOrders && fromOrders !== fromCache) {
-                fromOrders.tracking_number = tracking;
-                fromOrders.tracking = tracking;
-            }
-            // Update tampilan span di kedua kemungkinan ID
-            const span1 = document.getElementById(`tracking-display-${idStr}`);
-            const span2 = document.getElementById(`trk-${idStr}`);
-            const text = tracking || '-';
-            if (span1) span1.textContent = text;
-            if (span2) span2.textContent = text;
-        } else {
-            showNotification(result?.message || 'Gagal memperbarui tracking', 'error');
-        }
-    } catch (e) {
-        console.error('editOrderTracking error', e);
-        showNotification('Terjadi kesalahan saat memperbarui tracking', 'error');
     }
 }
 
@@ -2499,13 +2444,10 @@ function updateProductsTable() {
             <td class="text-end"><span class="fw-bold">${Number.isFinite(+product.stock) ? parseInt(product.stock, 10) : 0}</span></td>
             <td class="text-start">${Array.isArray(product.variants) && product.variants.length ? product.variants.map(v => `<span class=\"badge bg-light text-dark me-1\">${(v && (v.name || v.type || '')).toString()}</span>`).join('') : '-'}</td>
             <td><span class="badge ${statusBadgeClass}">${capitalizeFirst(String(product.status || '').replace('_', ' '))}</span></td>
-            <td class="action-buttons text-end">
+            <td class="action-buttons">
                 <div class="btn-group" role="group" aria-label="Actions">
                     <button class="btn btn-sm btn-outline-primary" onclick="editProduct('${product.id}')" title="Edit Product">
                         <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-info" onclick="viewProduct('${product.id}')" title="View Details">
-                        <i class="fas fa-eye"></i>
                     </button>
                     <button class="btn btn-sm btn-outline-danger" onclick="deleteProduct('${product.id}')" title="Delete Product">
                         <i class="fas fa-trash"></i>
@@ -3433,12 +3375,6 @@ function updateOrdersTable() {
             <td>${order.customer_name}</td>
             <td>${order.customer_email}</td>
             <td>${escapeHtml(order.shipping_address || '-')}</td>
-            <td>
-                <span id="trk-${order.id}">${escapeHtml(order.tracking_number || '-')}</span>
-                <button class="btn btn-sm btn-link text-decoration-none" onclick="editOrderTracking('${order.id}')" title="Edit tracking">
-                    <i class="fas fa-edit"></i>
-                </button>
-            </td>
             <td class="currency">${formatCurrency(order.total_amount)}</td>
             <td>
                 <select class="form-select form-select-sm" data-current="${String(order.status || '')}" onchange="updateOrderStatus('${order.id}', this.value, this)">
@@ -3451,9 +3387,6 @@ function updateOrdersTable() {
             </td>
             <td>${formatDate(order.created_at)}</td>
             <td class="action-buttons">
-                <button class="btn btn-sm btn-outline-info" onclick="viewOrderDetails('${order.id}')" title="View Details">
-                    <i class="fas fa-eye"></i>
-                </button>
                 <button class="btn btn-sm btn-outline-success" onclick="printReceipt('${order.id}')" title="Print Receipt">
                     <i class="fas fa-print"></i>
                 </button>
@@ -3520,7 +3453,6 @@ function viewOrderDetails(orderId) {
         Customer: ${order.customer_name}<br>
         Email: ${order.customer_email}<br>
         Address: ${escapeHtml(order.shipping_address || '-') }<br>
-        Tracking: ${escapeHtml(order.tracking_number || '-') }<br>
         Total: ${formatCurrency(order.total_amount)}<br>
         Status: ${capitalizeFirst(order.status)}<br>
         Date: ${formatDate(order.created_at)}<br><br>
@@ -7907,13 +7839,15 @@ function updateFlashSalesTable() {
                 <td>${stockInfo}</td>
                 <td>${autoApplyBadge}</td>
                 <td>${status}</td>
-                <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="editFlashSale(${sale.id})" title="Edit">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteFlashSale(${sale.id})" title="Delete">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                <td class="action-buttons">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Flash sale actions">
+                        <button class="btn btn-sm btn-outline-primary" onclick="editFlashSale(${sale.id})" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteFlashSale(${sale.id})" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
                 </td>
             </tr>
         `;
@@ -8620,13 +8554,15 @@ function updateFreeShippingTable() {
                 <td>${period}</td>
                 <td>${usage}</td>
                 <td>${status}</td>
-                <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="editFreeShipping(${promo.id})" title="Edit">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteFreeShipping(${promo.id})" title="Delete">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                <td class="action-buttons">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Free shipping actions">
+                        <button class="btn btn-sm btn-outline-primary" onclick="editFreeShipping(${promo.id})" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteFreeShipping(${promo.id})" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
                 </td>
             </tr>
         `;
@@ -8885,13 +8821,15 @@ function updateProductVouchersTable() {
                 <td>${conditions}</td>
                 <td>${usage}</td>
                 <td>${status}</td>
-                <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="editProductVoucher(${voucher.id})" title="Edit">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteProductVoucher(${voucher.id})" title="Delete">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                <td class="action-buttons">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Product voucher actions">
+                        <button class="btn btn-sm btn-outline-primary" onclick="editProductVoucher(${voucher.id})" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteProductVoucher(${voucher.id})" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
                 </td>
             </tr>
         `;

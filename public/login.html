@@ -9,22 +9,41 @@
     <link rel="stylesheet" href="styles.css">
     <style>
         body {
-            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+            /* Gradiasi merah-oranye dengan animasi lembut */
+            background: radial-gradient(circle at top left, #f97316 0%, #dc2626 30%, #b91c1c 60%, #7f1d1d 100%);
+            background-size: 200% 200%;
+            animation: loginBgPulse 14s ease-in-out infinite alternate;
             min-height: 100vh;
+            margin: 0;
             display: flex;
             align-items: center;
             justify-content: center;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 100%;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
         .login-container {
             background: white;
             border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            box-shadow: 0 25px 60px rgba(0,0,0,0.18);
             overflow: hidden;
             width: 100%;
             max-width: 900px;
             min-height: 500px;
+            /* Animasi slide/fade in */
+            opacity: 0;
+            transform: translateY(30px);
+            animation: loginSlideUp 0.8s ease-out forwards;
         }
 
         .login-left {
@@ -167,6 +186,59 @@
             .login-title {
                 font-size: 2rem;
             }
+        }
+
+        /* Animasi background halaman login */
+        @keyframes loginBgPulse {
+            0% { background-position: 0% 0%; }
+            50% { background-position: 50% 100%; }
+            100% { background-position: 100% 0%; }
+        }
+
+        /* Lapisan glow lembut agar background tidak terasa solid */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: -20%;
+            background:
+                radial-gradient(circle at 10% 20%, rgba(248, 250, 252, 0.14), transparent 55%),
+                radial-gradient(circle at 80% 10%, rgba(254, 249, 195, 0.18), transparent 55%),
+                radial-gradient(circle at 20% 80%, rgba(252, 165, 165, 0.22), transparent 55%),
+                radial-gradient(circle at 90% 70%, rgba(254, 202, 202, 0.18), transparent 55%),
+                /* Corak garis diagonal tipis */
+                repeating-linear-gradient(135deg,
+                    rgba(248, 250, 252, 0.10) 0px,
+                    rgba(248, 250, 252, 0.10) 1px,
+                    transparent 1px,
+                    transparent 7px);
+            opacity: 0.9;
+            pointer-events: none;
+            mix-blend-mode: screen;
+            filter: blur(18px);
+            transform: translate3d(0,0,0);
+            animation: loginGlowDrift 26s ease-in-out infinite alternate;
+        }
+
+        /* Animasi slide-up untuk kotak login */
+        @keyframes loginSlideUp {
+            0% {
+                opacity: 0;
+                transform: translateY(30px) scale(0.98);
+            }
+            60% {
+                opacity: 1;
+                transform: translateY(-4px) scale(1.01);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @keyframes loginGlowDrift {
+            0% { transform: translate3d(-10px, -10px, 0) scale(1); }
+            50% { transform: translate3d(10px, 5px, 0) scale(1.05); }
+            100% { transform: translate3d(-5px, 10px, 0) scale(1.02); }
         }
     </style>
 </head>
@@ -327,39 +399,69 @@
         // Login form submission
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            
+
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
             const rememberMe = document.getElementById('rememberMe').checked;
-            
+
             // Show loading state
             showLoading(true);
             hideAlert();
-            
+
             try {
-                const payload = { 
+                const payload = {
                     username: username,
                     email: username, // Send both for compatibility
-                    password: password, 
-                    rememberMe: rememberMe 
+                    password: password,
+                    rememberMe: rememberMe
                 };
+
+                // Hitung base path dinamis berdasarkan lokasi saat ini
+                const currentPath = window.location.pathname;
+                let basePath = '';
+
+                // Jika ada folder /public di path, gunakan itu sebagai base
+                const publicIndex = currentPath.indexOf('/public/');
+                if (publicIndex !== -1) {
+                    basePath = currentPath.substring(0, publicIndex + '/public'.length);
+                } else {
+                    // Kalau tidak ada, pakai direktori dari halaman saat ini
+                    const lastSlash = currentPath.lastIndexOf('/');
+                    basePath = lastSlash > 0 ? currentPath.substring(0, lastSlash) : '';
+                }
+
                 async function tryLogin(url) {
-                    const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const resp = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
                     let data = null;
-                    try { data = await resp.json(); } catch(_) { data = null; }
+                    try { data = await resp.json(); } catch (_) { data = null; }
                     return { resp, data };
                 }
 
-                // First attempt
-                let { resp, data } = await tryLogin('/api/auth/login');
-                // Fallback if non-JSON or not ok
-                if ((!resp.ok || !data) && !window.location.pathname.startsWith('/index.php')) {
-                    ({ resp, data } = await tryLogin('/index.php/api/auth/login'));
+                // First attempt (tanpa index.php)
+                let { resp, data } = await tryLogin(basePath + '/api/auth/login');
+                // Fallback jika non-JSON atau gagal dan belum lewat index.php
+                if ((!resp.ok || !data) && !window.location.pathname.includes('index.php')) {
+                    ({ resp, data } = await tryLogin(basePath + '/index.php/api/auth/login'));
                 }
 
-                if (resp.ok && data && data.success && data.token) {
+                if (resp.ok && data && data.success && data.requires_verification) {
+                    console.log('✅ Login membutuhkan verifikasi super admin:', data);
+
+                    // Simpan info untuk halaman verifikasi
+                    if (data.user && data.user.id) {
+                        sessionStorage.setItem('verifyUserId', data.user.id);
+                    }
+                    sessionStorage.setItem('verifyRememberMe', rememberMe ? '1' : '0');
+
+                    // Arahkan ke halaman verifikasi kode dengan base path yang sama
+                    window.location.href = basePath + '/verify.html';
+                } else if (resp.ok && data && data.success && data.token) {
                     console.log('✅ Login successful:', data);
-                    
+
                     // Store token with consistent key
                     localStorage.setItem('token', data.token);
                     if (rememberMe) {
@@ -367,17 +469,17 @@
                     } else {
                         sessionStorage.setItem('adminToken', data.token);
                     }
-                    
+
                     // Store user info
                     localStorage.setItem('user', JSON.stringify(data.user));
-                    
+
                     console.log('🔄 Redirecting to admin panel...');
-                    
-                    // Redirect to dashboard
-                    window.location.href = '/index.html';
+
+                    // Redirect to dashboard dengan base path yang sama
+                    window.location.href = basePath + '/index.html';
                 } else {
                     console.log('❌ Login failed:', data);
-                    const text = (!data && resp) ? (await resp.text().catch(()=>'') || '') : '';
+                    const text = (!data && resp) ? (await resp.text().catch(() => '') || '') : '';
                     const msg = (data && data.message) ? data.message : (text || 'Login gagal. Silakan coba lagi.');
                     showAlert(msg);
                 }

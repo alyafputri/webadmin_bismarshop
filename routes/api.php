@@ -47,6 +47,8 @@ Route::post('/customers', [AdminCustomerController::class, 'registerFromMobile']
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/verify-superadmin', [AuthController::class, 'verifySuperAdmin']);
+    Route::post('/resend-superadmin-code', [AuthController::class, 'resendSuperAdminCode']);
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth.token');
     Route::get('/me', [AuthController::class, 'me'])->middleware('auth.token');
     Route::get('/status', [AuthController::class, 'status'])->middleware('auth.token');
@@ -61,7 +63,6 @@ Route::middleware('auth.token')->group(function () {
 
     // Orders & Customers
     Route::get('/orders', [AdminOrderController::class, 'index']);
-    Route::put('/orders/{id}/tracking', [AdminOrderController::class, 'updateTracking']);
     Route::delete('/orders/{id}', [AdminOrderController::class, 'destroy']);
 
     Route::get('/customers', [AdminCustomerController::class, 'index']);
