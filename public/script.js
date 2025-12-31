@@ -3802,3 +3802,18 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+// Global initializer to support legacy calls from HTML or other scripts.
+// This delegates to the existing authentication/bootstrap flow.
+function initializeApp() {
+    try {
+        console.log('🚀 initializeApp called, initializing admin panel via checkAuthentication...');
+        if (typeof checkAuthentication === 'function') {
+            checkAuthentication();
+        } else {
+            console.error('checkAuthentication function is not available');
+        }
+    } catch (e) {
+        console.error('Error in initializeApp:', e);
+    }
+}
