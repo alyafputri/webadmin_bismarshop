@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
 class PublicApiController extends BaseController
 {
     private function normalizeImage(?string $p): string
@@ -656,7 +657,7 @@ class PublicApiController extends BaseController
             ]);
         } catch (\Throwable $e) {
             DB::rollBack();
-            \Log::error('Order Creation Error', [
+            Log::error('Order Creation Error', [
                 'error' => $e->getMessage(),
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
