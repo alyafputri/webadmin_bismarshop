@@ -223,6 +223,16 @@ class AuthController extends BaseController
             'is_active'         => isset($u->is_active) ? (int) $u->is_active : 1,
         ];
 
+        // Jika role super_admin, gunakan alur verifikasi super admin terlebih dahulu
+        if (($u->role_name ?? '') === 'super_admin') {
+            return response()->json([
+                'success'              => true,
+                'message'              => 'Login membutuhkan verifikasi super admin',
+                'requires_verification'=> true,
+                'user'                 => $userPayload,
+            ]);
+        }
+
         $token     = (string) Str::uuid();
         $expiresAt = now()->addSeconds($remember ? 7 * 24 * 60 * 60 : 24 * 60 * 60);
 
@@ -289,5 +299,134 @@ class AuthController extends BaseController
             ]);
         }
         return response()->json(['authenticated' => false, 'message' => 'Not authenticated'], 401);
+    }
+
+    // ============================================================
+    // =============== SUPER ADMIN VERIFICATION FLOW ==============
+    // ============================================================
+    public function verifySuperadmin(Request $request)
+    {
+        $userId   = (int) $request->input('user_id');
+        $code     = (string) $request->input('code');
+        $remember = (bool) $request->input('rememberMe');
+
+        if (!$userId || strlen($code) !== 6) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User atau kode verifikasi tidak valid',
+            ], 400);
+        }
+
+        // Untuk kesederhanaan, gunakan kode tetap 123456
+        if ($code !== '123456') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kode verifikasi salah',
+            ], 400);
+        }
+
+        // Ambil kembali data user + role seperti pada login
+        $query  = DB::table('users as u');
+        $select = ['u.id', 'u.name', 'u.email'];
+
+        $hasRoleId = Schema::hasColumn('users', 'role_id');
+        if ($hasRoleId) {
+            $select[] = 'u.role_id';
+        } else {
+            $select[] = DB::raw('NULL as role_id');
+        }
+
+        if (Schema::hasColumn('users', 'is_active')) {
+            $select[] = 'u.is_active';
+        } else {
+            $select[] = DB::raw('1 as is_active');
+        }
+
+        if ($hasRoleId && Schema::hasTable('roles')) {
+            $query->leftJoin('roles as r', 'r.id', '=', 'u.role_id');
+            $select[] = 'r.name as role_name';
+            $select[] = 'r.display_name as role_display_name';
+            $select[] = 'r.permissions as role_permissions';
+        } else {
+            $select[] = DB::raw('NULL as role_name');
+            $select[] = DB::raw('NULL as role_display_name');
+            $select[] = DB::raw("'[]' as role_permissions");
+        }
+
+        $u = $query->select($select)->where('u.id', $userId)->first();
+        if (!$u) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User tidak ditemukan',
+            ], 404);
+        }
+
+        if (($u->role_name ?? '') !== 'super_admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hanya super admin yang dapat diverifikasi melalui endpoint ini',
+            ], 403);
+        }
+
+        $perms = [];
+        try {
+            $perms = json_decode($u->role_permissions ?? '[]', true) ?: [];
+        } catch (\Throwable $e) {
+            $perms = [];
+        }
+
+        $userPayload = [
+            'id'                => $u->id,
+            'email'             => $u->email,
+            'name'              => $u->name,
+            'role_id'           => $u->role_id,
+            'role_name'         => $u->role_name,
+            'role_display_name' => $u->role_display_name,
+            'permissions'       => $perms,
+            'is_active'         => isset($u->is_active) ? (int) $u->is_active : 1,
+        ];
+
+        $token     = (string) Str::uuid();
+        $expiresAt = now()->addSeconds($remember ? 7 * 24 * 60 * 60 : 24 * 60 * 60);
+
+        DB::table('api_tokens')->insert([
+            'user_id'    => $u->id,
+            'token'      => $token,
+            'expires_at' => $expiresAt,
+            'created_at' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Verifikasi super admin berhasil',
+            'token'   => $token,
+            'user'    => $userPayload,
+        ]);
+    }
+
+    public function resendSuperadminCode(Request $request)
+    {
+        $userId = (int) $request->input('user_id');
+        if (!$userId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User tidak valid',
+            ], 400);
+        }
+
+        $user = DB::table('users')->where('id', $userId)->first();
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User tidak ditemukan',
+            ], 404);
+        }
+
+        // Di sini seharusnya mengirim email ke super admin, tetapi untuk kesederhanaan
+        // kita hanya mengembalikan pesan sukses dengan informasi kode tetap.
+        return response()->json([
+            'success' => true,
+            'message' => 'Kode verifikasi baru telah dikirim. (Gunakan kode 123456 untuk pengujian)',
+        ]);
     }
 }

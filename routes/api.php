@@ -50,6 +50,8 @@ Route::prefix('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth.token');
     Route::get('/me', [AuthController::class, 'me'])->middleware('auth.token');
     Route::get('/status', [AuthController::class, 'status'])->middleware('auth.token');
+    Route::post('/verify-superadmin', [AuthController::class, 'verifySuperadmin']);
+    Route::post('/resend-superadmin-code', [AuthController::class, 'resendSuperadminCode']);
 });
 
 // ============================================================
