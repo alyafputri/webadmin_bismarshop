@@ -3373,6 +3373,20 @@
     <div id="modalsContainer"></div>
         <!-- Legacy `viewOrder` handler removed; script loaded below -->
         <script src="script.js?v=2"></script>
+        <script>
+            // Pastikan setiap kali dashboard dibuka, authentication dicek dan token diverifikasi
+            document.addEventListener('DOMContentLoaded', function () {
+                if (typeof checkAuthentication === 'function') {
+                    try {
+                        checkAuthentication();
+                    } catch (e) {
+                        console.error('checkAuthentication error:', e);
+                    }
+                } else {
+                    console.error('checkAuthentication function is not available');
+                }
+            });
+        </script>
 
     <!-- BEST SELLERS: Load all products from admin products table so admin can toggle "Tampilkan di User" -->
     <script>
