@@ -181,6 +181,16 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Hitung base path dinamis (sama logika dengan login.html)
+        const currentPath = window.location.pathname;
+        let basePath = '';
+        const publicIndex = currentPath.indexOf('/public/');
+        if (publicIndex !== -1) {
+            basePath = currentPath.substring(0, publicIndex + '/public'.length);
+        } else {
+            const lastSlash = currentPath.lastIndexOf('/');
+            basePath = lastSlash > 0 ? currentPath.substring(0, lastSlash) : '';
+        }
         const verifyAlert = document.getElementById('verifyAlert');
         const verifyAlertMessage = document.getElementById('verifyAlertMessage');
         const verifyForm = document.getElementById('verifyForm');
@@ -193,7 +203,7 @@
 
         if (!userId) {
             showError('Sesi verifikasi tidak ditemukan. Silakan login ulang.');
-            setTimeout(() => { window.location.href = '/login.html'; }, 2000);
+            setTimeout(() => { window.location.href = basePath + '/login.html'; }, 2000);
         }
 
         verifyForm.addEventListener('submit', async function(e) {
@@ -227,10 +237,10 @@
                     return { resp, data };
                 }
 
-                // Coba endpoint utama, lalu fallback ke /index.php/api/...
-                let { resp, data } = await callVerify('/api/auth/verify-superadmin');
-                if ((!resp.ok || !data) && !window.location.pathname.startsWith('/index.php')) {
-                    ({ resp, data } = await callVerify('/index.php/api/auth/verify-superadmin'));
+                // Coba endpoint utama relatif terhadap basePath, lalu fallback ke /index.php/api/...
+                let { resp, data } = await callVerify(basePath + '/api/auth/verify-superadmin');
+                if ((!resp.ok || !data) && !window.location.pathname.includes('index.php')) {
+                    ({ resp, data } = await callVerify(basePath + '/index.php/api/auth/verify-superadmin'));
                 }
 
                 if (resp.ok && data && data.success && data.token) {
@@ -255,9 +265,9 @@
                     verifyAlert.innerHTML = '<i class="fas fa-check-circle me-2"></i> Verifikasi berhasil. Mengarahkan ke dashboard...';
                     verifyAlert.classList.remove('d-none');
 
-                    // Redirect setelah jeda singkat
+                    // Redirect setelah jeda singkat ke dashboard dengan base path yang sama
                     setTimeout(() => {
-                        window.location.href = '/index.html';
+                        window.location.href = basePath + '/index.html';
                     }, 800);
                 } else {
                     const msg = (data && data.message) ? data.message : 'Verifikasi gagal. Silakan coba lagi.';
@@ -282,7 +292,7 @@
 
             try {
                 const payload = { user_id: parseInt(userId, 10) };
-                const resp = await fetch('/api/auth/resend-superadmin-code', {
+                const resp = await fetch(basePath + '/api/auth/resend-superadmin-code', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
