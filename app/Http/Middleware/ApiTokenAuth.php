@@ -59,7 +59,10 @@ class ApiTokenAuth
         if (!$user) {
             return response()->json(['success' => false, 'message' => 'User not found'], 401);
         }
-        if (isset($user->is_active) && (int)$user->is_active === 0) {
+        // Blokir akun non-aktif untuk semua role KECUALI super_admin yang
+        // sudah melalui alur verifikasi khusus.
+        $roleName = $user->role_name ?? null;
+        if (isset($user->is_active) && (int) $user->is_active === 0 && $roleName !== 'super_admin') {
             return response()->json(['success' => false, 'message' => 'Akun dinonaktifkan'], 403);
         }
 
