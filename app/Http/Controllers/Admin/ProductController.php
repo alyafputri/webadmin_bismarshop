@@ -103,7 +103,8 @@ class ProductController extends BaseController
         if ($q) { $where[] = '(name LIKE ? OR description LIKE ?)'; $params[] = "%$q%"; $params[] = "%$q%"; }
         $whereSql = $where ? ('WHERE '.implode(' AND ',$where)) : '';
         try {
-            $rows = DB::select("SELECT id, name, category, regular_price, promo_price, stock, status, variants_json FROM products $whereSql ORDER BY id DESC LIMIT $limit", $params);
+            // Include status so frontend can display product status in table
+            $rows = DB::select("SELECT id, name, category, regular_price, promo_price, stock, status FROM products $whereSql ORDER BY id DESC LIMIT $limit", $params);
             if ($rows) {
                 $ids = array_map(fn($r)=>$r->id, $rows);
                 $ph = implode(',', array_fill(0, count($ids), '?'));

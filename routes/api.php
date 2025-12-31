@@ -47,8 +47,6 @@ Route::post('/customers', [AdminCustomerController::class, 'registerFromMobile']
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
-    Route::post('/verify-superadmin', [AuthController::class, 'verifySuperAdmin']);
-    Route::post('/resend-superadmin-code', [AuthController::class, 'resendSuperAdminCode']);
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth.token');
     Route::get('/me', [AuthController::class, 'me'])->middleware('auth.token');
     Route::get('/status', [AuthController::class, 'status'])->middleware('auth.token');
@@ -63,6 +61,11 @@ Route::middleware('auth.token')->group(function () {
 
     // Orders & Customers
     Route::get('/orders', [AdminOrderController::class, 'index']);
+    Route::get('/orders/{id}', [AdminOrderController::class, 'show']);
+    Route::put('/orders/{id}', [AdminOrderController::class, 'update']);
+    Route::post('/orders/{id}/status', [AdminOrderController::class, 'updateStatus']);
+    Route::put('/orders/{id}/tracking', [AdminOrderController::class, 'updateTracking']);
+    Route::get('/orders/{id}/receipt', [AdminOrderController::class, 'getReceipt']);
     Route::delete('/orders/{id}', [AdminOrderController::class, 'destroy']);
 
     Route::get('/customers', [AdminCustomerController::class, 'index']);
@@ -174,6 +177,7 @@ Route::prefix('public')->group(function () {
 
     Route::post('/orders', [PublicApiController::class, 'createOrder']);
     Route::get('/orders', [PublicApiController::class, 'listOrders']);
+    Route::post('/orders/{id}/cancel', [PublicApiController::class, 'cancelOrder']);
     Route::post('/orders/{id}/complete', [PublicApiController::class, 'completeOrder']);
 
     Route::post('/reviews', [PublicApiController::class, 'upsertReview']);

@@ -213,9 +213,23 @@ class PublicApiController extends BaseController
     public function widgets(Request $req)
     {
         try {
+            // Pastikan tabel widgets ada dan strukturnya minimal sama dengan admin
+            try {
+                $exists = DB::selectOne("SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'widgets'");
+                if (!$exists || (int)($exists->c ?? 0) === 0) {
+                    DB::statement("CREATE TABLE widgets (id INT AUTO_INCREMENT PRIMARY KEY, title VARCHAR(150) NOT NULL, type ENUM('banner','widget','promotion','category') NOT NULL DEFAULT 'banner', category_slug VARCHAR(50) NULL, file_path VARCHAR(500) NOT NULL, url VARCHAR(500) NOT NULL, is_active TINYINT(1) NOT NULL DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                } else {
+                    try { DB::statement("ALTER TABLE widgets ADD COLUMN IF NOT EXISTS category_slug VARCHAR(50) NULL AFTER type"); } catch (\Throwable $e) {}
+                    try { DB::statement("ALTER TABLE widgets MODIFY COLUMN type ENUM('banner','widget','promotion','category') NOT NULL DEFAULT 'banner'"); } catch (\Throwable $e) {}
+                }
+            } catch (\Throwable $e) {
+                // Jika database bukan MySQL/MariaDB, biarkan SELECT gagal secara normal
+            }
+
             $rows = DB::select("SELECT id, title, type, category_slug, url, is_active FROM widgets WHERE is_active = 1 ORDER BY id DESC");
+
             $base = (string) env('PUBLIC_BASE_URL', '');
-            $data = array_map(function($w) use ($base){
+            $data = array_map(function($w) use ($base) {
                 $img = (string)($w->url ?? '');
                 if ($img !== '' && !(str_starts_with($img, 'http://') || str_starts_with($img, 'https://'))) {
                     $img = $base ? ($base.$img) : $img;
@@ -229,9 +243,11 @@ class PublicApiController extends BaseController
                     'isActive' => (bool)$w->is_active,
                 ];
             }, $rows);
-            return response()->json(['success'=>true,'data'=>$data]);
+
+            return response()->json(['success' => true, 'data' => $data]);
         } catch (\Throwable $e) {
-            return response()->json(['success'=>true,'data'=>[]]);
+            // Jika terjadi error apa pun, jangan jatuhkan aplikasi user: kembalikan list kosong
+            return response()->json(['success' => true, 'data' => []]);
         }
     }
 
@@ -334,6 +350,8 @@ class PublicApiController extends BaseController
         $trackingNumber  = $b['trackingNumber']  ?? null;
         $totalAmount     = $b['totalAmount']     ?? null;
         $items           = $b['items']           ?? [];
+        $appliedVouchers = $b['appliedVouchers'] ?? [];
+        $paymentMethod   = $b['paymentMethod']   ?? $b['payment_method'] ?? null; // e.g. 'bank_transfer', 'cash', etc.
 
         if (!$customerEmail || !is_array($items) || count($items) === 0) {
             return response()->json([
@@ -345,18 +363,17 @@ class PublicApiController extends BaseController
         $emailLower = strtolower((string) $customerEmail);
 
         // ============================================================
-        // VALIDASI: user harus terdaftar & (jika ada is_active) sudah aktif
+        // VALIDASI: user harus terdaftar (sudah pernah register/login)
+        // Tidak lagi memaksa is_active = 1 di sini; approval diatur di level aplikasi
         // ============================================================
         $exists = false;
 
         // Cek di tabel users (utama)
         try {
             if (Schema::hasTable('users')) {
-                $query = DB::table('users')->whereRaw('LOWER(email) = ?', [$emailLower]);
-                if (Schema::hasColumn('users', 'is_active')) {
-                    $query->where('is_active', 1);
-                }
-                $exists = $query->exists();
+                $exists = DB::table('users')
+                    ->whereRaw('LOWER(email) = ?', [$emailLower])
+                    ->exists();
             }
         } catch (\Throwable $e) {
             $exists = false;
@@ -396,26 +413,172 @@ class PublicApiController extends BaseController
         }
 
         // ============================================================
-        // CREATE ORDER
+        // VALIDASI VOUCHER (BERDASARKAN DATA ADMIN)
         // ============================================================
         try {
-            DB::beginTransaction();
+            $subtotal = 0;
+            $productIds = [];
+            foreach ($items as $it) {
+                $qty = (int)($it['quantity'] ?? 1);
+                $price = (float)($it['price'] ?? 0);
+                $subtotal += $qty * $price;
+                if (!empty($it['productId'])) {
+                    $productIds[] = (int)$it['productId'];
+                }
+            }
+            $productIds = array_values(array_unique(array_filter($productIds)));
 
-            // Ensure optional columns exist in orders / order_items
-            try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_address VARCHAR(255) NULL"); } catch (\Throwable $e) {}
-            try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number VARCHAR(100) NULL"); } catch (\Throwable $e) {}
-            try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL"); } catch (\Throwable $e) {}
-            try { DB::statement("ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_image VARCHAR(1024) NULL"); } catch (\Throwable $e) {}
+            if (is_array($appliedVouchers) && count($appliedVouchers) > 0) {
+                foreach ($appliedVouchers as $v) {
+                    if (!is_array($v)) continue;
+                    $vid = isset($v['id']) ? (int)$v['id'] : 0;
+                    $catRaw = strtolower(trim((string)($v['category'] ?? '')));
+                    if (!$vid || $catRaw === '') {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Voucher tidak valid',
+                        ], 400);
+                    }
+                    $category = $catRaw;
+
+                    if (in_array($category, ['shopping', 'belanja'])) {
+                        // General shopping vouchers from vouchers table
+                        $row = DB::selectOne("SELECT id, code, name, type, value, min_purchase, max_discount, start_date, end_date, is_active FROM vouchers WHERE id = ? LIMIT 1", [$vid]);
+                        if (!$row || !(int)$row->is_active) {
+                            return response()->json(['success'=>false,'message'=>'Voucher belanja tidak aktif atau tidak ditemukan'], 400);
+                        }
+                        $now = now();
+                        if ($row->start_date && $now < $row->start_date) {
+                            return response()->json(['success'=>false,'message'=>'Voucher belanja belum berlaku'], 400);
+                        }
+                        if ($row->end_date && $now > $row->end_date) {
+                            return response()->json(['success'=>false,'message'=>'Voucher belanja sudah kadaluarsa'], 400);
+                        }
+                        if ($subtotal < (float)($row->min_purchase ?? 0)) {
+                            return response()->json(['success'=>false,'message'=>'Belanja belum mencapai minimum untuk voucher belanja'], 400);
+                        }
+                    } elseif (in_array($category, ['product', 'produk'])) {
+                        // Product/category specific vouchers from product_vouchers
+                        $row = DB::selectOne("SELECT id, type, value, max_discount, start_date, end_date, is_active, target_type, target_id FROM product_vouchers WHERE id = ? LIMIT 1", [$vid]);
+                        if (!$row || !(int)$row->is_active) {
+                            return response()->json(['success'=>false,'message'=>'Voucher produk tidak aktif atau tidak ditemukan'], 400);
+                        }
+                        $now = now();
+                        if ($row->start_date && $now < $row->start_date) {
+                            return response()->json(['success'=>false,'message'=>'Voucher produk belum berlaku'], 400);
+                        }
+                        if ($row->end_date && $now > $row->end_date) {
+                            return response()->json(['success'=>false,'message'=>'Voucher produk sudah kadaluarsa'], 400);
+                        }
+                        // Jika voucher tertarget ke produk tertentu, pastikan ada di keranjang
+                        if ($row->target_type === 'product' && $row->target_id && $productIds) {
+                            $targetId = (int)$row->target_id;
+                            if (!in_array($targetId, $productIds, true)) {
+                                return response()->json(['success'=>false,'message'=>'Voucher produk hanya berlaku untuk produk tertentu'], 400);
+                            }
+                        }
+                        // Jika target_type category, validasi kategori bisa ditambah jika diperlukan
+                    } elseif (in_array($category, ['flashsale', 'flash_sale', 'flashsalev2'])) {
+                        // Flash sale: cukup validasi periode dan is_active
+                        $row = DB::selectOne("SELECT id, start_date, end_date, is_active FROM flash_sales WHERE id = ? LIMIT 1", [$vid]);
+                        if (!$row || !(int)$row->is_active) {
+                            return response()->json(['success'=>false,'message'=>'Flash sale tidak aktif atau tidak ditemukan'], 400);
+                        }
+                        $now = now();
+                        if ($row->start_date && $now < $row->start_date) {
+                            return response()->json(['success'=>false,'message'=>'Flash sale belum dimulai'], 400);
+                        }
+                        if ($row->end_date && $now > $row->end_date) {
+                            return response()->json(['success'=>false,'message'=>'Flash sale telah berakhir'], 400);
+                        }
+                    } elseif (in_array($category, ['freeshipping', 'free_shipping', 'gratisongkir', 'gratis_ongkir'])) {
+                        // Free shipping promotions
+                        $row = DB::selectOne("SELECT id, min_amount, max_discount, start_date, end_date, is_active FROM free_shipping_promotions WHERE id = ? LIMIT 1", [$vid]);
+                        if (!$row || !(int)$row->is_active) {
+                            return response()->json(['success'=>false,'message'=>'Promo gratis ongkir tidak aktif atau tidak ditemukan'], 400);
+                        }
+                        $now = now();
+                        if ($row->start_date && $now < $row->start_date) {
+                            return response()->json(['success'=>false,'message'=>'Promo gratis ongkir belum berlaku'], 400);
+                        }
+                        if ($row->end_date && $now > $row->end_date) {
+                            return response()->json(['success'=>false,'message'=>'Promo gratis ongkir sudah kadaluarsa'], 400);
+                        }
+                        if ($subtotal < (float)($row->min_amount ?? 0)) {
+                            return response()->json(['success'=>false,'message'=>'Belanja belum mencapai minimum untuk gratis ongkir'], 400);
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memvalidasi voucher: '.$e->getMessage(),
+            ], 400);
+        }
+
+        // ============================================================
+        // CREATE ORDER
+        // ============================================================
+        
+        // Ensure optional columns exist BEFORE transaction
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_address VARCHAR(255) NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number VARCHAR(100) NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL"); } catch (\Throwable $e) {}
+        // Payment-related columns for bank transfer flow with unique amount
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50) NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS amount_to_pay INT NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS bank_name VARCHAR(100) NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS bank_account_number VARCHAR(100) NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS bank_account_name VARCHAR(150) NULL"); } catch (\Throwable $e) {}
+        try { DB::statement("ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_image VARCHAR(1024) NULL"); } catch (\Throwable $e) {}
+        
+        try {
+            DB::beginTransaction();
+            // Base amount (after voucher etc.)
+            $baseTotal = (int) round((float) ($totalAmount ?? 0));
+
+            // Generate unique amount for bank transfer so admin can easily match
+            $amountToPay = $baseTotal;
+            $bankName = null;
+            $bankAccountNumber = null;
+            $bankAccountName = null;
+            $paymentStatus = null;
+
+            if ($paymentMethod && strtolower((string)$paymentMethod) === 'bank_transfer') {
+                // Simple 2-3 digit unique code using order count modulo; still deterministic enough
+                try {
+                    $cntRow = DB::selectOne("SELECT COALESCE(MAX(id),0) AS max_id FROM orders");
+                    $code = ((int)($cntRow->max_id ?? 0) + 1) % 1000; // 0..999
+                    if ($code < 1) $code = rand(1, 999);
+                    $amountToPay = $baseTotal + $code;
+                } catch (\Throwable $e) {
+                    $amountToPay = $baseTotal;
+                }
+
+                // Static company bank account (can be moved to config/.env later)
+                $bankName = 'Transfer Bank';
+                $bankAccountNumber = env('COMPANY_BANK_ACCOUNT', '1234567890');
+                $bankAccountName = env('COMPANY_BANK_NAME', 'PT Indo Bismar');
+                $paymentStatus = 'pending_payment';
+            }
 
             $id = DB::table('orders')->insertGetId([
-                'customer_id'      => null,
-                'customer_name'    => $customerName ?: explode('@', (string) $customerEmail)[0],
-                'customer_email'   => $customerEmail,
-                'shipping_address' => $shippingAddress,
-                'tracking_number'  => $trackingNumber,
-                'status'           => 'pending',
-                'total_amount'     => (int) round((float) ($totalAmount ?? 0)),
-                'created_at'       => now(),
+                'customer_id'        => null,
+                'customer_name'      => $customerName ?: explode('@', (string) $customerEmail)[0],
+                'customer_email'     => $customerEmail,
+                'shipping_address'   => $shippingAddress,
+                'tracking_number'    => $trackingNumber,
+                'status'             => 'pending',
+                'total_amount'       => $baseTotal,
+                'payment_method'     => $paymentMethod,
+                'payment_status'     => $paymentStatus,
+                'amount_to_pay'      => $amountToPay,
+                'bank_name'          => $bankName,
+                'bank_account_number'=> $bankAccountNumber,
+                'bank_account_name'  => $bankAccountName,
+                'created_at'         => now(),
             ]);
 
             foreach ($items as $it) {
@@ -477,12 +640,31 @@ class PublicApiController extends BaseController
 
             DB::commit();
 
-            return response()->json(['success' => true, 'id' => $id]);
+            // Return extra payment info so frontend can show pending payment page
+            return response()->json([
+                'success' => true,
+                'id' => $id,
+                'payment' => [
+                    'method' => $paymentMethod,
+                    'status' => $paymentStatus,
+                    'amount' => $baseTotal,
+                    'amountToPay' => $amountToPay,
+                    'bankName' => $bankName,
+                    'bankAccountNumber' => $bankAccountNumber,
+                    'bankAccountName' => $bankAccountName,
+                ],
+            ]);
         } catch (\Throwable $e) {
             DB::rollBack();
+            \Log::error('Order Creation Error', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create public order',
+                'message' => 'Failed to create public order: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -493,10 +675,10 @@ class PublicApiController extends BaseController
             $name = trim((string)$req->query('name', ''));
             $rows = [];
             if ($email !== '') {
-                $rows = DB::select("SELECT id, customer_name, customer_email, shipping_address, tracking_number, status, total_amount, created_at FROM orders WHERE customer_email = ? ORDER BY id DESC LIMIT 200", [$email]);
+                $rows = DB::select("SELECT id, customer_name, customer_email, shipping_address, tracking_number, status, total_amount, created_at, payment_method, payment_status, amount_to_pay, bank_name, bank_account_number, bank_account_name FROM orders WHERE customer_email = ? ORDER BY id DESC LIMIT 200", [$email]);
             }
             if ((!$email || count($rows) === 0) && $name !== '') {
-                $rows = DB::select("SELECT id, customer_name, customer_email, shipping_address, tracking_number, status, total_amount, created_at FROM orders WHERE customer_name = ? ORDER BY id DESC LIMIT 200", [$name]);
+                $rows = DB::select("SELECT id, customer_name, customer_email, shipping_address, tracking_number, status, total_amount, created_at, payment_method, payment_status, amount_to_pay, bank_name, bank_account_number, bank_account_name FROM orders WHERE customer_name = ? ORDER BY id DESC LIMIT 200", [$name]);
             }
             if (!$rows) return response()->json(['success'=>true,'data'=>[]]);
             $ids = array_map(fn($r)=>$r->id, $rows);
@@ -515,6 +697,12 @@ class PublicApiController extends BaseController
                     'status'=>$o->status,
                     'total_amount'=>$o->total_amount,
                     'created_at'=>$o->created_at,
+                    'payment_method'=>$o->payment_method ?? null,
+                    'payment_status'=>$o->payment_status ?? null,
+                    'amount_to_pay'=>$o->amount_to_pay ?? null,
+                    'bank_name'=>$o->bank_name ?? null,
+                    'bank_account_number'=>$o->bank_account_number ?? null,
+                    'bank_account_name'=>$o->bank_account_name ?? null,
                     'items'=> array_map(fn($i)=>[
                         'product_id'=>$i->product_id,
                         'product_name'=>$i->product_name,
@@ -549,6 +737,32 @@ class PublicApiController extends BaseController
         }
     }
 
+    public function cancelOrder(Request $req, $id)
+    {
+        try {
+            $id = (int)$id;
+            $email = trim((string)($req->input('email') ?? ''));
+            if (!$id || $email === '') return response()->json(['success' => false, 'message' => 'Invalid id/email'], 400);
+
+            $row = DB::selectOne("SELECT id, status, customer_email FROM orders WHERE id = ? AND customer_email = ? LIMIT 1", [$id, $email]);
+            if (!$row) return response()->json(['success' => false, 'message' => 'Order not found'], 404);
+
+            $currentStatus = (string)($row->status ?? '');
+            $allowed = ['pending', 'menunggu'];
+            if (!in_array(strtolower(trim($currentStatus)), $allowed)) {
+                return response()->json(['success' => false, 'message' => 'Cannot cancel'], 400);
+            }
+
+            try { DB::statement("ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL"); } catch (\Throwable $e) {}
+            $result = DB::update("UPDATE orders SET status = 'canceled', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [$id]);
+            if ($result === 0) return response()->json(['success' => false, 'message' => 'Order not found'], 404);
+            return response()->json(['success' => true]);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Failed to cancel order'], 500);
+        }
+    }
+    
+
     public function upsertReview(Request $req)
     {
         try {
@@ -560,9 +774,28 @@ class PublicApiController extends BaseController
             $comment = $b['comment'] ?? null;
             $productName = $b['productName'] ?? null;
             $productImage = $b['productImage'] ?? null;
-            if ($email === '' || !$orderId || $productId === '' || !$rating) return response()->json(['success'=>false,'message'=>'email, orderId, productId, rating wajib'], 400);
-            DB::statement("CREATE TABLE IF NOT EXISTS reviews (id INT AUTO_INCREMENT PRIMARY KEY, customer_email VARCHAR(255) NOT NULL, order_id INT NOT NULL, product_id VARCHAR(64) NOT NULL, rating INT NOT NULL, comment TEXT NULL, product_name VARCHAR(255) NULL, product_image TEXT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NULL, UNIQUE KEY uniq_review (customer_email, order_id, product_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-            DB::statement("INSERT INTO reviews (customer_email, order_id, product_id, rating, comment, product_name, product_image, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE rating = VALUES(rating), comment = VALUES(comment), product_name = VALUES(product_name), product_image = VALUES(product_image), updated_at = CURRENT_TIMESTAMP", [$email, $orderId, $productId, $rating, $comment, $productName, $productImage]);
+
+            if ($email === '' || !$orderId || $productId === '' || !$rating) {
+                return response()->json(['success'=>false,'message'=>'email, orderId, productId, rating wajib'], 400);
+            }
+
+            // Sesuaikan dengan struktur tabel reviews di database (tanpa UNIQUE KEY)
+            DB::table('reviews')->updateOrInsert(
+                [
+                    'customer_email' => $email,
+                    'order_id'       => $orderId,
+                    'product_id'     => $productId,
+                ],
+                [
+                    'rating'        => $rating,
+                    'comment'       => $comment,
+                    'product_name'  => $productName,
+                    'product_image' => $productImage,
+                    'updated_at'    => now(),
+                    // created_at akan diisi otomatis oleh DB pada insert pertama
+                ]
+            );
+
             return response()->json(['success'=>true,'message'=>'Review saved']);
         } catch (\Throwable $e) {
             return response()->json(['success'=>false,'message'=>'Failed to save review'], 500);
@@ -574,11 +807,22 @@ class PublicApiController extends BaseController
         try {
             $email = trim((string)$req->query('email', ''));
             $orderId = $req->query('orderId');
-            if ($email === '') return response()->json(['success'=>false,'message'=>'email diperlukan'], 400);
-            DB::statement("CREATE TABLE IF NOT EXISTS reviews (id INT AUTO_INCREMENT PRIMARY KEY, customer_email VARCHAR(255) NOT NULL, order_id INT NOT NULL, product_id VARCHAR(64) NOT NULL, rating INT NOT NULL, comment TEXT NULL, product_name VARCHAR(255) NULL, product_image TEXT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NULL, UNIQUE KEY uniq_review (customer_email, order_id, product_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-            $where = ['customer_email = ?']; $params = [$email];
-            if ($orderId) { $where[] = 'order_id = ?'; $params[] = (int)$orderId; }
-            $rows = DB::select("SELECT id, customer_email, order_id, product_id, rating, comment, product_name, product_image, created_at FROM reviews WHERE ".implode(' AND ', $where)." ORDER BY id DESC LIMIT 500", $params);
+            if ($email === '') {
+                return response()->json(['success'=>false,'message'=>'email diperlukan'], 400);
+            }
+
+            $query = DB::table('reviews')
+                ->select('id', 'customer_email', 'order_id', 'product_id', 'rating', 'comment', 'product_name', 'product_image', 'created_at')
+                ->where('customer_email', $email)
+                ->orderByDesc('id')
+                ->limit(500);
+
+            if ($orderId) {
+                $query->where('order_id', (int)$orderId);
+            }
+
+            $rows = $query->get();
+
             return response()->json(['success'=>true,'data'=>$rows]);
         } catch (\Throwable $e) {
             return response()->json(['success'=>false,'message'=>'Failed to list reviews'], 500);
